@@ -78,7 +78,7 @@ export class ViofoCam extends DashCam {
 
            // Define a regular expression with named capture groups
             const fileRegex =
-            /^<tr><td><a href="\/(?<path>[^"]*)\d_(?<view>\w).MP4"><b>[^<]+<\/b><\/a><td align=right> (?<size>.*?MB)<td align=right>(?<date>[\S\s]*?)<td align=right>/gm;
+            /^<tr><td><a href="\/(?<path>[^"]*\d_(?<view>\w).MP4)"><b>[^<]+<\/b><\/a><td align=right> (?<size>.*?MB)<td align=right>(?<date>[\S\s]*?)<td align=right>/gm;
 
           // Extract data using the regular expression and named capture groups
           const files: VideoReference[] = [];
