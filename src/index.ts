@@ -20,7 +20,7 @@ async function downloadList(videos: VIOFOVideoExtended[]) {
       await viofoCam.DeleteVideo(v);
     }
     catch (err) {
-      console.warn(`Failed to download video: ${v.FPATH}`)
+      console.warn(`Failed to download video: ${v.FPATH}`, err)
     }
   } 
 }
