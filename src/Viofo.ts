@@ -5,6 +5,7 @@ import xml2js from "xml2js"
 import fs from "fs"
 import path from "path"
 import ProgressBar from "progress";
+import { utimesSync } from 'utimes';
 
 interface VIOFOVideoBase  {
   NAME: string
@@ -17,7 +18,7 @@ interface VIOFOVideoBase  {
 
 type Lens = "Front" | "Rear" | "Interior";
 type RecordingMode = "Parking" | "Normal";
-interface VIOFOVideoExtended extends VIOFOVideoBase {
+export interface VIOFOVideoExtended extends VIOFOVideoBase {
   Lens: Lens
   RecordingMode: RecordingMode
   StartDate: Date
@@ -52,6 +53,18 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
     const targetPath = path.join(targetBase,videoPath.base)
     fs.mkdirSync(targetBase,{recursive: true})
     let ws = fs.createWriteStream(targetPath);
+    ws.on("ready",()=>{
+      utimesSync(targetPath,{
+        btime: video.StartDate.getTime()
+      })
+    })
+    ws.on("close",()=>{
+      utimesSync(targetPath,{
+        mtime: video.EndDate.getTime(),
+        atime: Date.now()
+      })
+    });
+    
     const url = `http://${this.IPAddress}${video.FPATH.replace(/\\/gm,"/").split(":")[1]}`;
     console.log(`Downloading ${url} to ${targetPath}`)
     const response = await Axios({
@@ -74,8 +87,9 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
       progressBar.tick(chunk.length, {'currM': (curr / 1024000).toFixed(2)})
     });
     response.data.pipe(ws);
-
+    
     await new Promise<void>((resolve,reject)=>{
+      
       response.data.on("end",()=>{
         resolve();
       })
@@ -83,6 +97,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
         reject()
       })
     })
+    
   }
 
   // #endregion Public Methods (2)
