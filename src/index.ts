@@ -32,17 +32,16 @@ async function run() {
   console.log(`\nReceived ${r.length} videos`);
 
   // Download Locked videos first
-  const lockedVideos = r.filter(v=>v.Locked)
+  const lockedVideos = r.filter(v=>v.Locked).sort(compareByDate);
   await downloadList(lockedVideos);
 
   // Download driving videos second
-  const normalRecordings = r.filter(v=>v.RecordingMode == "Normal")
-    .sort((a,b) => a.Lens == "Front" ? -1 : 1)
-
-  await downloadList(normalRecordings);
+  const normalRecordings = r.filter(v=>v.RecordingMode == "Normal").sort(compareByDate)
+  await downloadList(normalRecordings.filter(v=>v.Lens == "Front"));
+  await downloadList(normalRecordings.filter(v=>v.Lens != "Front"));
 
   // Download Parking videos last
-  const parkingRecordings =  r.filter(v=>v.RecordingMode == "Parking")
+  const parkingRecordings =  r.filter(v=>v.RecordingMode == "Parking").sort(compareByDate)
   await downloadList(parkingRecordings);
 
 }
