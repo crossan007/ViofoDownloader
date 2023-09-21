@@ -1,6 +1,6 @@
 import  Axios, { AxiosResponse } from "axios";
 import { BehaviorSubject, scan, Subject } from "rxjs";
-import { DashCam } from "./dashcam";
+import { DashCam } from "./DashCam";
 import xml2js from "xml2js"
 import fs from "fs"
 import path from "path"
