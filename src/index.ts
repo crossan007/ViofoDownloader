@@ -30,11 +30,20 @@ async function run() {
   console.log(`Fetching Metadata`);
   const r = await lastValueFrom(viofoCam.FetchMetadata())
   console.log(`\nReceived ${r.length} videos`);
+
+  // Download Locked videos first
   const lockedVideos = r.filter(v=>v.Locked)
   await downloadList(lockedVideos);
 
-  const notLocked = r.filter(v=>!v.Locked).sort(compareByDate);
-  await downloadList(notLocked);
+  // Download driving videos second
+  const normalRecordings = r.filter(v=>v.RecordingMode == "Normal")
+    .sort((a,b) => a.Lens == "Front" ? -1 : 1)
+
+  await downloadList(normalRecordings);
+
+  // Download Parking videos last
+  const parkingRecordings =  r.filter(v=>v.RecordingMode == "Parking")
+  await downloadList(parkingRecordings);
 
 }
 
