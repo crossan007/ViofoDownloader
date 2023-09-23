@@ -8,7 +8,6 @@ export abstract class DashCam<VideoFields>{
 
   protected MetadataStream: BehaviorSubject<VideoFields[]> =
   new BehaviorSubject<VideoFields[]>([]);
-  protected videos: VideoFields[] = [];
 
   // #endregion Properties (2)
 

@@ -25,6 +25,7 @@ export interface VIOFOVideoExtended extends VIOFOVideoBase {
   EndDate: Date
   Duration: number
   Locked: boolean
+  Finished: boolean
 }
 
 
@@ -52,6 +53,16 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
     const targetBase = path.join(this.getLocalDownloadDir(),`${video.Locked ? "Locked" : ""}`,`${video.StartDate.getFullYear()}`,`${video.StartDate.getUTCMonth()+1}`)
     const targetPath = path.join(targetBase,videoPath.base)
     fs.mkdirSync(targetBase,{recursive: true})
+    
+    
+    const url = `http://${this.IPAddress}${video.FPATH.replace(/\\/gm,"/").split(":")[1]}`;
+    console.log(`Downloading ${url} to ${targetPath}`)
+    const response = await Axios({
+      url: url,
+      method: "GET",
+      responseType: "stream"
+    })
+
     let ws = fs.createWriteStream(targetPath);
     ws.on("ready",()=>{
       utimesSync(targetPath,{
@@ -64,14 +75,6 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
         atime: Date.now()
       })
     });
-    
-    const url = `http://${this.IPAddress}${video.FPATH.replace(/\\/gm,"/").split(":")[1]}`;
-    console.log(`Downloading ${url} to ${targetPath}`)
-    const response = await Axios({
-      url: url,
-      method: "GET",
-      responseType: "stream"
-    })
 
     const progressBar = new ProgressBar('-> downloading [:bar] :percent :etas :currM MB', {
       width: 40,
@@ -124,10 +127,17 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
     try {
       const response = await Axios.get(ROURL);
       const parsed = await xml2js.parseStringPromise(response.data ,{
-        explicitArray:false,
-
+        explicitArray:false
       });
-      const allFiles = parsed.LIST.ALLFile as {File: VIOFOVideoBase}[];
+
+      let allFiles: {File: VIOFOVideoBase}[] = [];
+      if (Array.isArray(parsed.LIST.ALLFile)) {
+        allFiles = parsed.LIST.ALLFile
+      }
+      else {
+        allFiles = [parsed.LIST.ALLFile]
+      }
+      const allVideos: VIOFOVideoExtended[] = [];
       for(let f of allFiles) {
         const StartDateGroups = f.File.NAME.match(/^(?<year>\d{4})_(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<second>\d{2})/);
         if ( !StartDateGroups?.groups || !("year" in StartDateGroups?.groups)) {
@@ -137,23 +147,97 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
         const {year, number, month, day, hour, minute, second } = StartDateGroups.groups
         const startDate = new Date(parseInt(year),parseInt(month)-1,parseInt(day),parseInt(hour),parseInt(minute),parseInt(second));
         const endDate = new Date(f.File.TIME);
-        this.videos.push({
+        allVideos.push({
           ...f.File,
           RecordingMode: parseParking(f.File.FPATH),
           Lens: parseLens(f.File.FPATH),
           StartDate: startDate,
           EndDate: endDate,
           Duration: endDate.getTime() - startDate.getTime(),
-          Locked: f.File.FPATH .includes("RO")
+          Locked: f.File.FPATH .includes("RO"),
+          Finished: f.File.ATTR !== "32"
         })
       }
-      this.MetadataStream.next(this.videos);
+      this.MetadataStream.next(allVideos);
       this.MetadataStream.complete();
     }
     catch (err) {
       console.log(err)
       this.MetadataStream.error(err);
     }
+  }
+
+  public async getHeartbeat(): Promise<number> {
+    const sTime = Date.now();
+    await this.RunCommand(Command.HEART_BEAT, 500);
+    return Date.now() - sTime;
+  }
+
+  public async getFreeSpace(): Promise<string> {
+    const response = await this.RunCommandParsed(Command.CARD_FREE_SPACE)
+    return `${response.Function.Value / (1024 * 1024)} MB`
+  }
+
+  private async RunCommandParsed(command: Command): Promise<any> {
+    const response = await this.RunCommand(command);
+    return await xml2js.parseStringPromise(response.data ,{
+      explicitArray:false
+    });
+  }
+
+  public async FormatMemory() {
+    await this.setRecording(false);
+    await this.RunCommandWithParam(Command.FORMAT_MEMORY,1);
+    await this.setRecording(true);
+  }
+
+  public async Reboot() {
+    console.info("Rebooting camera...")
+    await this.RunCommand(Command.RESTART_CAMERA)
+    await this.waitForStatus(false);
+    await this.waitForStatus(true);
+   
+  }
+
+  public async waitForStatus(desiredAlive: boolean = true) {
+    let alive = false;
+    console.info(`Waiting for camera to be ${desiredAlive ? 'online' : 'offline'}`)
+    do {
+      try {
+        await this.getHeartbeat();
+        alive = true;
+      }
+      catch (err) {
+        alive = false;
+      }
+      if (alive == desiredAlive) {
+        break;
+      }
+      else {
+        await new Promise<void>((resolve)=>{
+          setTimeout(()=>{resolve()},500)
+        })
+      }
+    } while (true)
+  }
+
+  public async setRecording(record: boolean) {
+    return await this.RunCommandWithParam(Command.MOVIE_RECORD, record ? 1 : 0);
+  }
+
+  private async RunCommandWithParam(command: Command, param: string | number): Promise<AxiosResponse<any,any>> {
+    const URL = `http://${this.IPAddress}/?custom=1&cmd=${command}&par=${param}`;
+    const response = await Axios.get(URL);
+    return response;
+   
+  }
+
+
+  private async RunCommand(command: Command, timeout: number = 2000): Promise<AxiosResponse<any,any>> {
+    const URL = `http://${this.IPAddress}/?custom=1&cmd=${command}`;
+    const response = await Axios.get(URL,{timeout: timeout});
+    return response
+   
   }
 
   // #endregion Protected Methods (1)
@@ -243,7 +327,7 @@ class Command {
   static REMOVE_LAST_USER = 3023;
   static RESET_SETTING = 3011;
   static RESOLUTION_FRAMES = 8076;
-  static RESTART_CAMERA = 9095;
+  static RESTART_CAMERA = 8230;
   static SCREEN_SUFFIX= 4002;
   static SCREEN_SAVER = 9405;
   static SET_DATE = 3005;
