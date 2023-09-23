@@ -155,7 +155,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
           EndDate: endDate,
           Duration: endDate.getTime() - startDate.getTime(),
           Locked: f.File.FPATH .includes("RO"),
-          Finished: f.File.ATTR !== "32"
+          Finished: true // TODO: figure out how to figure this out
         })
       }
       this.MetadataStream.next(allVideos);
@@ -236,16 +236,54 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
   private async RunCommand(command: Command, timeout: number = 2000): Promise<AxiosResponse<any,any>> {
     const URL = `http://${this.IPAddress}/?custom=1&cmd=${command}`;
     const response = await Axios.get(URL,{timeout: timeout});
-    return response
-   
+    return response   
+  }
+
+  public async GetCurrentState(): Promise<SerializedState> {
+    const s =  await this.RunCommand(Command.GET_CURRENT_STATE)
+    const state = await xml2js.parseStringPromise(s.data,{
+      explicitArray:false,
+
+    }) as StateResponse;
+    let results: SerializedState = {};
+    
+    state.Function.Cmd.forEach((v,i)=>{
+      results[v] = {
+        status: state.Function.Status[i]
+      };
+    })
+
+    state.Function.Function.forEach((v,i)=>{
+      results[v.Cmd] = {
+        status: state.Function.Function[i].Status,
+        value: state.Function.Function[i].String
+      };
+    })
+    
+    return results
   }
 
   // #endregion Protected Methods (1)
 
 }
 
+type SerializedState = Record<string, {status: string, value?: string}>
+
+
+type StateResponse = {
+  Function: {
+    Cmd: string[],
+    Status: string[],
+    Function: {
+      Cmd: string,
+      Status: string,
+      String: string
+    }[]
+  }
+}
 
 class Command {
+  static GET_CURRENT_STATE = 3014;
   static AUTO_POWER_OFF = 3007;
   static BASE_URL = "http://192.168.1.254";
   static BEEP_SOUND = 9094;
@@ -309,7 +347,7 @@ class Command {
   static MOVIE_LIVE_VIEW_CONTROL = 2015;
   static MOVIE_MAX_RECORD_TIME = 2009;
   static MOVIE_RECORD = 2001;
-  static MOVIE_RECORDING_TIME = 2016;
+  static MOVIE_RECORDING_TIME = 2016; // how far into the current recording we are (seconds?)
   static MOVIE_REC_BITRATE = 2013;
   static MOVIE_RESOLUTION = 2002;
   static MOVIE_WDR = 2004;
@@ -322,7 +360,7 @@ class Command {
   static PHOTO_CAPTURE = 1001;
   static REAR_CAMERA_MIRROR = 9219;
   static REAR_IMAGE_ROTATE = 0;
-  static RECONNECT_WIFI = 3018;
+  static RECONNECT_WIFI = 3018; // works
   static REMOTE_CONTROL_FUNCTION = 2020;
   static REMOVE_LAST_USER = 3023;
   static RESET_SETTING = 3011;
