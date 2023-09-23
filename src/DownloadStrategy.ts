@@ -19,7 +19,7 @@ export class DownloadStrategy {
   private concurrency: number = 1;
   private videoQueue = new Queue<VIOFOVideoExtended>();
 
-  constructor(private camera: ViofoCam) {
+  constructor(private camera: ViofoCam, private includeParking: boolean = false) {
 
   }
 
@@ -32,20 +32,28 @@ export class DownloadStrategy {
     const freeSpace = await this.camera.getFreeSpace();
     console.log(`Refreshing download queue. Camera latency: ${cameraLatency} ms. Camera free space: ${freeSpace}`);
     const r = await (await lastValueFrom(this.camera.FetchMetadata())).filter(v=> v.Finished);
-    console.log(`\nReceived ${r.length} videos`);
+   
     const lockedVideos = r.filter(v=>v.Locked).sort(compareByDate);
+    const normalRecordings = r.filter(v=>v.RecordingMode == "Normal").sort(compareByDate)
+    const parkingRecordings =  r.filter(v=>v.RecordingMode == "Parking").sort(compareByDate)
+    
+    console.log(`Received ${r.length} videos. Locked: ${lockedVideos.length}. Driving: ${normalRecordings.length}.  Parking: ${parkingRecordings.length}.`);
+
+
     this.videoQueue.enqueue(lockedVideos.filter(v=>v.Lens == "Front"));
     this.videoQueue.enqueue(lockedVideos.filter(v=>v.Lens != "Front"));
 
     // Download driving videos second
-    const normalRecordings = r.filter(v=>v.RecordingMode == "Normal").sort(compareByDate)
+    
     this.videoQueue.enqueue(normalRecordings.filter(v=>v.Lens == "Front"));
     this.videoQueue.enqueue(normalRecordings.filter(v=>v.Lens != "Front"));
 
-    // Download Parking videos last
-    const parkingRecordings =  r.filter(v=>v.RecordingMode == "Parking").sort(compareByDate)
-    this.videoQueue.enqueue(parkingRecordings.filter(v=>v.Lens == "Front"));
-    this.videoQueue.enqueue(parkingRecordings.filter(v=>v.Lens != "Front"));
+    if (this.includeParking) {
+      // Download Parking videos last
+      
+      this.videoQueue.enqueue(parkingRecordings.filter(v=>v.Lens == "Front"));
+      this.videoQueue.enqueue(parkingRecordings.filter(v=>v.Lens != "Front"));
+    }
   }
 
   public async download() {
