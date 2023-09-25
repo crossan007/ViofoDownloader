@@ -68,7 +68,12 @@ export class DownloadStrategy {
         // TODO: If one download fails, check to see if the camera is still alive;  Cancel remaining downloads if it's gone
         // TODO: Delete the failed download attempt
         console.warn(`Failed to download video: ${v.FPATH}`, err)
-        await this.updateQueue();
+        try { 
+          await this.updateQueue();
+        }
+        catch (err) {
+          throw new DownloadError("Download failed; camera offline")
+        }
       }
     }
   }
