@@ -96,8 +96,8 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
       response.data.on("end",()=>{
         resolve();
       })
-      response.data.on("error",()=>{
-        reject()
+      response.data.on("error",(err: any)=>{
+        reject(err)
       })
     })
     
@@ -233,7 +233,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
   }
 
 
-  private async RunCommand(command: Command, timeout: number = 2000): Promise<AxiosResponse<any,any>> {
+  private async RunCommand(command: Command, timeout: number = 60000): Promise<AxiosResponse<any,any>> {
     const URL = `http://${this.IPAddress}/?custom=1&cmd=${command}`;
     const response = await Axios.get(URL,{timeout: timeout});
     return response   
