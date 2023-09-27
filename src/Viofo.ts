@@ -8,28 +8,46 @@ import ProgressBar from "progress";
 import { utimesSync } from 'utimes';
 
 interface VIOFOVideoBase  {
-  NAME: string
-  FPATH: string
-  SIZE: string
-  TIMECODE: string
-  TIME: string
+  // #region Properties (6)
+
   ATTR: string
+  FPATH: string
+  NAME: string
+  SIZE: string
+  TIME: string
+  TIMECODE: string
+
+  // #endregion Properties (6)
 }
 
 type Lens = "Front" | "Rear" | "Interior";
 type RecordingMode = "Parking" | "Normal";
 export interface VIOFOVideoExtended extends VIOFOVideoBase {
+  // #region Properties (7)
+
+  Duration: number
+  EndDate: Date
+  Finished: boolean
   Lens: Lens
+  Locked: boolean
   RecordingMode: RecordingMode
   StartDate: Date
-  EndDate: Date
-  Duration: number
-  Locked: boolean
-  Finished: boolean
+
+  // #endregion Properties (7)
 }
 
-
 export class ViofoCam extends DashCam<VIOFOVideoExtended> {
+  // #region Properties (2)
+
+  private state: SerializedState | undefined;
+  public lastHeartbeat: number = -1;
+
+  public GetCachedState(): SerializedState | undefined {
+    return this.state;
+  }
+
+  // #endregion Properties (2)
+
   // #region Constructors (1)
 
   constructor(private IPAddress: string, private OnlyLocked: boolean = true) {
@@ -38,7 +56,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
 
   // #endregion Constructors (1)
 
-  // #region Public Methods (2)
+  // #region Public Methods (8)
 
   public async DeleteVideo(video: VIOFOVideoExtended): Promise<void> {
     const response = await Axios({
@@ -53,7 +71,6 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
     const targetBase = path.join(this.getLocalDownloadDir(),`${video.Locked ? "Locked" : ""}`,`${video.StartDate.getFullYear()}`,`${video.StartDate.getUTCMonth()+1}`)
     const targetPath = path.join(targetBase,videoPath.base)
     fs.mkdirSync(targetBase,{recursive: true})
-    
     
     const url = `http://${this.IPAddress}${video.FPATH.replace(/\\/gm,"/").split(":")[1]}`;
     console.log(`Downloading ${url} to ${targetPath}`)
@@ -92,7 +109,6 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
     response.data.pipe(ws);
     
     await new Promise<void>((resolve,reject)=>{
-      
       response.data.on("end",()=>{
         resolve();
       })
@@ -100,10 +116,60 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
         reject(err)
       })
     })
-    
   }
 
-  // #endregion Public Methods (2)
+  public async FormatMemory() {
+    await this.setRecording(false);
+    await this.RunCommandWithParam(Command.FORMAT_MEMORY,1);
+    await this.setRecording(true);
+  }
+
+  public async Reboot() {
+    console.info("Rebooting camera...")
+    await this.RunCommand(Command.RESTART_CAMERA)
+    await this.waitForStatus(false);
+    await this.waitForStatus(true);
+  }
+
+  public async getFreeSpace(): Promise<string> {
+    const response = await this.RunCommandParsed(Command.CARD_FREE_SPACE)
+    return `${response.Function.Value / (1024 * 1024)} MB`
+  }
+
+  public async getHeartbeat(): Promise<number> {
+    const sTime = Date.now();
+    await this.RunCommand(Command.HEART_BEAT, 500);
+    this.lastHeartbeat = Date.now();
+    return this.lastHeartbeat  - sTime;
+  }
+
+  public async setRecording(record: boolean) {
+    return await this.RunCommandWithParam(Command.MOVIE_RECORD, record ? 1 : 0);
+  }
+
+  public async waitForStatus(desiredAlive: boolean = true) {
+    let alive = false;
+    console.info(`Waiting for camera to be ${desiredAlive ? 'online' : 'offline'}`)
+    do {
+      try {
+        await this.getHeartbeat();
+        alive = true;
+      }
+      catch (err) {
+        alive = false;
+      }
+      if (alive == desiredAlive) {
+        break;
+      }
+      else {
+        await new Promise<void>((resolve)=>{
+          setTimeout(()=>{resolve()},500)
+        })
+      }
+    } while (true)
+  }
+
+  // #endregion Public Methods (8)
 
   // #region Protected Methods (1)
 
@@ -167,15 +233,14 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
     }
   }
 
-  public async getHeartbeat(): Promise<number> {
-    const sTime = Date.now();
-    await this.RunCommand(Command.HEART_BEAT, 500);
-    return Date.now() - sTime;
-  }
+  // #endregion Protected Methods (1)
 
-  public async getFreeSpace(): Promise<string> {
-    const response = await this.RunCommandParsed(Command.CARD_FREE_SPACE)
-    return `${response.Function.Value / (1024 * 1024)} MB`
+  // #region Private Methods (3)
+
+  private async RunCommand(command: Command, timeout: number = 60000): Promise<AxiosResponse<any,any>> {
+    const URL = `http://${this.IPAddress}/?custom=1&cmd=${command}`;
+    const response = await Axios.get(URL,{timeout: timeout});
+    return response   
   }
 
   private async RunCommandParsed(command: Command): Promise<any> {
@@ -185,58 +250,10 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
     });
   }
 
-  public async FormatMemory() {
-    await this.setRecording(false);
-    await this.RunCommandWithParam(Command.FORMAT_MEMORY,1);
-    await this.setRecording(true);
-  }
-
-  public async Reboot() {
-    console.info("Rebooting camera...")
-    await this.RunCommand(Command.RESTART_CAMERA)
-    await this.waitForStatus(false);
-    await this.waitForStatus(true);
-   
-  }
-
-  public async waitForStatus(desiredAlive: boolean = true) {
-    let alive = false;
-    console.info(`Waiting for camera to be ${desiredAlive ? 'online' : 'offline'}`)
-    do {
-      try {
-        await this.getHeartbeat();
-        alive = true;
-      }
-      catch (err) {
-        alive = false;
-      }
-      if (alive == desiredAlive) {
-        break;
-      }
-      else {
-        await new Promise<void>((resolve)=>{
-          setTimeout(()=>{resolve()},500)
-        })
-      }
-    } while (true)
-  }
-
-  public async setRecording(record: boolean) {
-    return await this.RunCommandWithParam(Command.MOVIE_RECORD, record ? 1 : 0);
-  }
-
   private async RunCommandWithParam(command: Command, param: string | number): Promise<AxiosResponse<any,any>> {
     const URL = `http://${this.IPAddress}/?custom=1&cmd=${command}&par=${param}`;
     const response = await Axios.get(URL);
     return response;
-   
-  }
-
-
-  private async RunCommand(command: Command, timeout: number = 60000): Promise<AxiosResponse<any,any>> {
-    const URL = `http://${this.IPAddress}/?custom=1&cmd=${command}`;
-    const response = await Axios.get(URL,{timeout: timeout});
-    return response   
   }
 
   public async GetCurrentState(): Promise<SerializedState> {
@@ -259,16 +276,14 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
         value: state.Function.Function[i].String
       };
     })
+
+    this.state = results;
     
-    return results
+    return results;
   }
-
-  // #endregion Protected Methods (1)
-
 }
 
 type SerializedState = Record<string, {status: string, value?: string}>
-
 
 type StateResponse = {
   Function: {
@@ -283,108 +298,114 @@ type StateResponse = {
 }
 
 class Command {
-  static GET_CURRENT_STATE = 3014;
-  static AUTO_POWER_OFF = 3007;
-  static BASE_URL = "http://192.168.1.254";
-  static BEEP_SOUND = 9094;
-  static BLANK_CHAR_REPLACE = "+";
-  static BLANK_CHAR_REPLACE_2 = "*";
-  static BOOT_DELAY = 9424;
-  static CAMERA_MODEL_STAMP = 9216;
-  static CAPTURE_SIZE = 1002;
-  static CARD_FREE_SPACE = 3017;
-  static CAR_NUMBER = 9422;
-  static CHANGE_MODE = 3001;
-  static CUSTOM_TEXT_STAMP = 9417;
-  static DATE_FORMAT = 0;
-  static DEFAULT_IP = "192.168.1.254";
-  static DEFAULT_PORT = 3333;
-  static DELETE_ALL_FILE = 4004;
-  static DELETE_ONE_FILE = 4003;
-  static DISABLE_REAR_CAMERA = 8098;
-  static ENTER_PARKING_MODE_TIMER = 0;
-  static FIRMWARE_VERSION = 3012;
-  static FONT_CAMERA_MIRROR = 0;
-  static FORMAT_MEMORY = 3010;
-  static FREQUENCY = 9406;
-  static FRONT_IMAGE_ROTATE = 0;
-  static FS_UNKNOW_FORMAT = 3025;
-  static GET_BATTERY_LEVEL = 3019;
-  static GET_CARD_STATUS = 3024;
-  static GET_CAR_NUMBER = 9426;
-  static GET_CUSTOM_STAMP = 9427;
-  static GET_FILE_LIST = 3015;
-  static GET_SENSOR_STATUS = 9432;
-  static GET_UPDATE_FW_PATH = 3026;
-  static GET_WIFI_SSID_PASSWORD = 3029;
-  static GPS = 9410;
-  static GPS_INFO_STAMP = 9214;
-  static HDR_TIME = 8251;
-  static HDR_TIME_GET = 8252;
-  static HEART_BEAT = 3016;
-  static IMAGE_ROTATE = 9093;
-  static INTERIOR_CAMERA_MIRROR = 0;
-  static INTERIOR_IMAGE_ROTATE = 0;
-  static IR_CAMERA_COLOR = 9218;
-  static IR_LED = 0;
-  static LANGUAGE = 3008;
-  static LENSES_NUMBER = 8250;
-  static LIVE_VIDEO_SOURCE = 3028;
-  static LIVE_VIEW_BITRATE = 2014;
-  static LIVE_VIEW_URL = "rtsp://192.168.1.254/xxx.mov";
-  static LOGO_STAMP = 9229;
-  static MICROPHONE = 0;
-  static MOTION_DET = 2006;
-  static MOVIE_AUDIO = 2007;
-  static MOVIE_AUTO_RECORDING = 2012;
-  static MOVIE_BITRATE = 9212;
-  static MOVIE_CYCLIC_REC = 2003;
-  static MOVIE_DATE_PRINT = 2008;
-  static MOVIE_EV_INTERIOR = 0;
-  static MOVIE_EV_REAR = 9217;
-  static MOVIE_EXPOSURE = 2005;
-  static MOVIE_GSENSOR_SENS = 2011;
-  static MOVIE_LIVE_VIEW_CONTROL = 2015;
-  static MOVIE_MAX_RECORD_TIME = 2009;
-  static MOVIE_RECORD = 2001;
-  static MOVIE_RECORDING_TIME = 2016; // how far into the current recording we are (seconds?)
-  static MOVIE_REC_BITRATE = 2013;
-  static MOVIE_RESOLUTION = 2002;
-  static MOVIE_WDR = 2004;
-  static PARKING_G_SENSOR = 9220;
-  static PARKING_MODE = 9421;
-  static PARKING_MOTION_DETECTION = 9221;
-  static PARKING_RECORDING_GEOFENCING = 0;
-  static PARKING_RECORDING_TIMER = 9428;
-  static PHOTO_AVAIL_NUM = 1003;
-  static PHOTO_CAPTURE = 1001;
-  static REAR_CAMERA_MIRROR = 9219;
-  static REAR_IMAGE_ROTATE = 0;
-  static RECONNECT_WIFI = 3018; // works
-  static REMOTE_CONTROL_FUNCTION = 2020;
-  static REMOVE_LAST_USER = 3023;
-  static RESET_SETTING = 3011;
-  static RESOLUTION_FRAMES = 8076;
-  static RESTART_CAMERA = 8230;
-  static SCREEN_SUFFIX= 4002;
-  static SCREEN_SAVER = 9405;
-  static SET_DATE = 3005;
-  static SET_NETWORK_MODE = 3033;
-  static SET_TIME = 3006;
-  static SPEED_UNIT = 9412;
-  static STORAGE_TYPE = 9434;
-  static STREAM_MJPEG = "http://192.168.1.254:8192";
-  static STREAM_VIDEO = "rtsp://192.168.1.254/xxx.mov";
-  static THUMB_SUFFIX = 4001;
-  static TIME_LAPSE_RECORDING = 9201;
-  static TIME_ZONE = 9411;
-  static TRIGGER_RAW_ENCODE = 2017;
-  static TV_FORMAT = 3009;
-  static VOICE_CONTROL = 9453;
-  static VOICE_NOTIFICATION = 0;
-  static VOICE_NOTIFICATION_VOLUME = 8053;
-  static WIFI_CHANNEL = 0;
-  static WIFI_NAME = 3003;
-  static WIFI_PWD = 3004;
-  static WIFI_STATION_CONFIGURATION = 0;
+  // #region Properties (104)
+
+  public static AUTO_POWER_OFF = 3007;
+  public static BASE_URL = "http://192.168.1.254";
+  public static BEEP_SOUND = 9094;
+  public static BLANK_CHAR_REPLACE = "+";
+  public static BLANK_CHAR_REPLACE_2 = "*";
+  public static BOOT_DELAY = 9424;
+  public static CAMERA_MODEL_STAMP = 9216;
+  public static CAPTURE_SIZE = 1002;
+  public static CARD_FREE_SPACE = 3017;
+  public static CAR_NUMBER = 9422;
+  public static CHANGE_MODE = 3001;
+  public static CUSTOM_TEXT_STAMP = 9417;
+  public static DATE_FORMAT = 0;
+  public static DEFAULT_IP = "192.168.1.254";
+  public static DEFAULT_PORT = 3333;
+  public static DELETE_ALL_FILE = 4004;
+  public static DELETE_ONE_FILE = 4003;
+  public static DISABLE_REAR_CAMERA = 8098;
+  public static ENTER_PARKING_MODE_TIMER = 0;
+  public static FIRMWARE_VERSION = 3012;
+  public static FONT_CAMERA_MIRROR = 0;
+  public static FORMAT_MEMORY = 3010;
+  public static FREQUENCY = 9406;
+  public static FRONT_IMAGE_ROTATE = 0;
+  public static FS_UNKNOW_FORMAT = 3025;
+  public static GET_BATTERY_LEVEL = 3019;
+  public static GET_CARD_STATUS = 3024;
+  public static GET_CAR_NUMBER = 9426;
+  public static GET_CURRENT_STATE = 3014;
+  public static GET_CUSTOM_STAMP = 9427;
+  public static GET_FILE_LIST = 3015;
+  public static GET_SENSOR_STATUS = 9432;
+  public static GET_UPDATE_FW_PATH = 3026;
+  public static GET_WIFI_SSID_PASSWORD = 3029;
+  public static GPS = 9410;
+  public static GPS_INFO_STAMP = 9214;
+  public static HDR_TIME = 8251;
+  public static HDR_TIME_GET = 8252;
+  public static HEART_BEAT = 3016;
+  public static IMAGE_ROTATE = 9093;
+  public static INTERIOR_CAMERA_MIRROR = 0;
+  public static INTERIOR_IMAGE_ROTATE = 0;
+  public static IR_CAMERA_COLOR = 9218;
+  public static IR_LED = 0;
+  public static LANGUAGE = 3008;
+  public static LENSES_NUMBER = 8250;
+  public static LIVE_VIDEO_SOURCE = 3028;
+  public static LIVE_VIEW_BITRATE = 2014;
+  public static LIVE_VIEW_URL = "rtsp://192.168.1.254/xxx.mov";
+  public static LOGO_STAMP = 9229;
+  public static MICROPHONE = 0;
+  public static MOTION_DET = 2006;
+  public static MOVIE_AUDIO = 2007;
+  public static MOVIE_AUTO_RECORDING = 2012;
+  public static MOVIE_BITRATE = 9212;
+  public static MOVIE_CYCLIC_REC = 2003;
+  public static MOVIE_DATE_PRINT = 2008;
+  public static MOVIE_EV_INTERIOR = 0;
+  public static MOVIE_EV_REAR = 9217;
+  public static MOVIE_EXPOSURE = 2005;
+  public static MOVIE_GSENSOR_SENS = 2011;
+  public static MOVIE_LIVE_VIEW_CONTROL = 2015;
+  public static MOVIE_MAX_RECORD_TIME = 2009;
+  public static MOVIE_RECORD = 2001;
+  public static MOVIE_RECORDING_TIME = 2016;
+  // how far into the current recording we are (seconds?)
+  public static MOVIE_REC_BITRATE = 2013;
+  public static MOVIE_RESOLUTION = 2002;
+  public static MOVIE_WDR = 2004;
+  public static PARKING_G_SENSOR = 9220;
+  public static PARKING_MODE = 9421;
+  public static PARKING_MOTION_DETECTION = 9221;
+  public static PARKING_RECORDING_GEOFENCING = 0;
+  public static PARKING_RECORDING_TIMER = 9428;
+  public static PHOTO_AVAIL_NUM = 1003;
+  public static PHOTO_CAPTURE = 1001;
+  public static REAR_CAMERA_MIRROR = 9219;
+  public static REAR_IMAGE_ROTATE = 0;
+  public static RECONNECT_WIFI = 3018;
+  // works
+  public static REMOTE_CONTROL_FUNCTION = 2020;
+  public static REMOVE_LAST_USER = 3023;
+  public static RESET_SETTING = 3011;
+  public static RESOLUTION_FRAMES = 8076;
+  public static RESTART_CAMERA = 8230;
+  public static SCREEN_SAVER = 9405;
+  public static SCREEN_SUFFIX = 4002;
+  public static SET_DATE = 3005;
+  public static SET_NETWORK_MODE = 3033;
+  public static SET_TIME = 3006;
+  public static SPEED_UNIT = 9412;
+  public static STORAGE_TYPE = 9434;
+  public static STREAM_MJPEG = "http://192.168.1.254:8192";
+  public static STREAM_VIDEO = "rtsp://192.168.1.254/xxx.mov";
+  public static THUMB_SUFFIX = 4001;
+  public static TIME_LAPSE_RECORDING = 9201;
+  public static TIME_ZONE = 9411;
+  public static TRIGGER_RAW_ENCODE = 2017;
+  public static TV_FORMAT = 3009;
+  public static VOICE_CONTROL = 9453;
+  public static VOICE_NOTIFICATION = 0;
+  public static VOICE_NOTIFICATION_VOLUME = 8053;
+  public static WIFI_CHANNEL = 0;
+  public static WIFI_NAME = 3003;
+  public static WIFI_PWD = 3004;
+  public static WIFI_STATION_CONFIGURATION = 0;
+
+  // #endregion Properties (104)
 }

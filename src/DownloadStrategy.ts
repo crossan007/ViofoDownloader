@@ -18,9 +18,18 @@ export class DownloadStrategy {
 
   private concurrency: number = 1;
   private videoQueue = new Queue<VIOFOVideoExtended>();
+  private currentDownloads: Record<string,VIOFOVideoExtended> = {};
 
   constructor(private camera: ViofoCam, private includeParking: boolean = false) {
 
+  }
+
+  public getCurrentQueue(): Queue<VIOFOVideoExtended> {
+    return this.videoQueue;
+  }
+
+  public getCurrentDownloads(): Record<string,VIOFOVideoExtended> {
+    return this.currentDownloads;
   }
 
   private async updateQueue() {
@@ -61,10 +70,13 @@ export class DownloadStrategy {
     let v: VIOFOVideoExtended | undefined;
     while(v = this.videoQueue.dequeue()) {
       try {
+        this.currentDownloads[v.FPATH] = v;
         await this.camera.DownloadVideo(v);
         await this.camera.DeleteVideo(v);
+        delete this.currentDownloads[v.FPATH];
       }
       catch (err) {
+        delete this.currentDownloads[v.FPATH];
         // TODO: If one download fails, check to see if the camera is still alive;  Cancel remaining downloads if it's gone
         // TODO: Delete the failed download attempt
         console.warn(`Failed to download video: ${v.FPATH}`, err)
@@ -75,6 +87,7 @@ export class DownloadStrategy {
           throw new DownloadError("Download failed; camera offline")
         }
       }
+      
     }
   }
 
