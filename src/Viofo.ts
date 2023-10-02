@@ -67,12 +67,13 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
   }
 
   public async DownloadVideo(video: VIOFOVideoExtended): Promise<void> {
-    const videoPath = path.parse(video.FPATH);
+    const videoPath = path.parse(video.FPATH.replace(/\\/gm,"/"));
+    console.log("video path", videoPath)
     const targetBase = path.join(this.getLocalDownloadDir(),`${video.Locked ? "Locked" : ""}`,`${video.StartDate.getFullYear()}`,`${video.StartDate.getUTCMonth()+1}`)
     const targetPath = path.join(targetBase,videoPath.base)
     fs.mkdirSync(targetBase,{recursive: true})
     
-    const url = `http://${this.IPAddress}${video.FPATH.replace(/\\/gm,"/").split(":")[1]}`;
+    const url = `http://${this.IPAddress}${video.FPATH.split(":")[1]}`;
     console.log(`Downloading ${url} to ${targetPath}`)
     const response = await Axios({
       url: url,
