@@ -1,6 +1,8 @@
 import { lastValueFrom } from "rxjs";
 import { Queue } from "./Queue";
 import { ViofoCam, VIOFOVideoExtended } from "./Viofo";
+import { getLogger } from "./logging";
+const log = getLogger("DownloadStrategy")
 
 // Custom comparison function to sort by dateProperty
 function compareByDate(a: VIOFOVideoExtended, b: VIOFOVideoExtended): number {
@@ -39,18 +41,22 @@ export class DownloadStrategy {
       throw new DownloadError(`Camera latency high: ${cameraLatency} ms`)
     }
     const freeSpace = await this.camera.getFreeSpace();
-    console.log(`Refreshing download queue. Camera latency: ${cameraLatency} ms. Camera free space: ${freeSpace}`);
-    const r = await (await lastValueFrom(this.camera.FetchMetadata())).filter(v=> v.Finished);
+    log.log(`Refreshing download queue. Camera latency: ${cameraLatency} ms. Camera free space: ${freeSpace}`);
+    const r = (await lastValueFrom(this.camera.FetchMetadata())).filter(v=> v.Finished);
    
     const lockedVideos = r.filter(v=>v.Locked).sort(compareByDate);
+    const lockedNotParking = lockedVideos.filter(v=>v.RecordingMode != "Parking")
+    const lockedParking = lockedVideos.filter(v=>v.RecordingMode == "Parking")
     const normalRecordings = r.filter(v=>v.RecordingMode == "Normal").sort(compareByDate)
     const parkingRecordings =  r.filter(v=>v.RecordingMode == "Parking").sort(compareByDate)
     
-    console.log(`Received ${r.length} videos. Locked: ${lockedVideos.length}. Driving: ${normalRecordings.length}.  Parking: ${parkingRecordings.length}.`);
+    log.log(`Received ${r.length} videos. Locked: ${lockedVideos.length}. Driving: ${normalRecordings.length}.  Parking: ${parkingRecordings.length}.`);
 
+    this.videoQueue.enqueue(lockedNotParking.filter(v=>v.Lens == "Front"));
+    this.videoQueue.enqueue(lockedNotParking.filter(v=>v.Lens != "Front"));
 
-    this.videoQueue.enqueue(lockedVideos.filter(v=>v.Lens == "Front"));
-    this.videoQueue.enqueue(lockedVideos.filter(v=>v.Lens != "Front"));
+    this.videoQueue.enqueue(lockedParking.filter(v=>v.Lens == "Front"));
+    this.videoQueue.enqueue(lockedParking.filter(v=>v.Lens != "Front"));
 
     // Download driving videos second
     
@@ -79,7 +85,7 @@ export class DownloadStrategy {
         delete this.currentDownloads[v.FPATH];
         // TODO: If one download fails, check to see if the camera is still alive;  Cancel remaining downloads if it's gone
         // TODO: Delete the failed download attempt
-        console.warn(`Failed to download video: ${v.FPATH}`, err)
+        log.warn(`Failed to download video: ${v.FPATH}`, err)
         try { 
           await this.updateQueue();
         }

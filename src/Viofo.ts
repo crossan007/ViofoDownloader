@@ -6,6 +6,8 @@ import fs from "fs"
 import path from "path"
 import ProgressBar from "progress";
 import { utimesSync } from 'utimes';
+import { getLogger } from "./logging";
+const log = getLogger("Viofo")
 
 interface VIOFOVideoBase  {
   // #region Properties (6)
@@ -63,18 +65,18 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
       url: `http://${this.IPAddress}/?custom=1&cmd=4003&str=${video.FPATH}`,
       method: "GET",
     })
-    console.log(`Deleted ${video.FPATH}`)
+    log.log(`Deleted ${video.FPATH}`)
   }
 
   public async DownloadVideo(video: VIOFOVideoExtended): Promise<void> {
     const videoPath = path.parse(video.FPATH.replace(/\\/gm,"/"));
-    console.log("video path", videoPath)
+    log.log("video path", videoPath)
     const targetBase = path.join(this.getLocalDownloadDir(),`${video.Locked ? "Locked" : ""}`,`${video.StartDate.getFullYear()}`,`${video.StartDate.getUTCMonth()+1}`)
     const targetPath = path.join(targetBase,videoPath.base)
     fs.mkdirSync(targetBase,{recursive: true})
     
     const url = `http://${this.IPAddress}${video.FPATH.split(":")[1]}`;
-    console.log(`Downloading ${url} to ${targetPath}`)
+    log.log(`Downloading ${url} to ${targetPath}`)
     const response = await Axios({
       url: url,
       method: "GET",
@@ -126,7 +128,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
   }
 
   public async Reboot() {
-    console.info("Rebooting camera...")
+    log.info("Rebooting camera...")
     await this.RunCommand(Command.RESTART_CAMERA)
     await this.waitForStatus(false);
     await this.waitForStatus(true);
@@ -150,7 +152,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
 
   public async waitForStatus(desiredAlive: boolean = true) {
     let alive = false;
-    console.info(`Waiting for camera to be ${desiredAlive ? 'online' : 'offline'}`)
+    log.info(`Waiting for camera to be ${desiredAlive ? 'online' : 'offline'}`)
     do {
       try {
         await this.getHeartbeat();
@@ -177,7 +179,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
   protected async requestHTTTP() {
     const ROURL = `http://${this.IPAddress}/?custom=1&cmd=${Command.GET_FILE_LIST}`;
     const parseParking = (path: string): RecordingMode => { 
-      return (path.includes("Parking") || path.includes("PF.MP4") || path.includes("PR.MP4")) ? "Parking" : "Normal";
+      return (path.includes("Parking") || path.includes("PF.MP4") || path.includes("PR.MP4") || path.includes("PI.MP4")) ? "Parking" : "Normal";
     }
     const parseLens = (path: string): Lens => {
       if (path.match(/F\.(MP4)|(JPG)$/)) {
@@ -191,12 +193,17 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
       }
       throw new Error(`Unknown lens for ${path}`)
     }
+    let response: AxiosResponse<any>;
     try {
-      const response = await Axios.get(ROURL);
-      const parsed = await xml2js.parseStringPromise(response.data ,{
-        explicitArray:false
-      });
-
+      response = await Axios.get(ROURL);
+    }
+    catch(err) {
+      throw new Error(`Failed getting metadata: ${(err as Error).message}`);
+    }
+    const parsed = await xml2js.parseStringPromise(response.data ,{
+      explicitArray:false
+    });
+    try{
       let allFiles: {File: VIOFOVideoBase}[] = [];
       if (Array.isArray(parsed.LIST.ALLFile)) {
         allFiles = parsed.LIST.ALLFile
@@ -208,7 +215,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
       for(let f of allFiles) {
         const StartDateGroups = f.File.NAME.match(/^(?<year>\d{4})_(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<second>\d{2})/);
         if ( !StartDateGroups?.groups || !("year" in StartDateGroups?.groups)) {
-          console.warn(`Bad file: ${f.File.FPATH}`);
+          log.warn(`Bad file: ${f.File.FPATH}`);
           continue;
         }
         const {year, number, month, day, hour, minute, second } = StartDateGroups.groups
@@ -229,7 +236,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
       this.MetadataStream.complete();
     }
     catch (err) {
-      console.log(err)
+      log.log("Failed parsing metadata", err)
       this.MetadataStream.error(err);
     }
   }
