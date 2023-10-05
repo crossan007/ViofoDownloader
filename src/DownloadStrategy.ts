@@ -1,8 +1,9 @@
-import { lastValueFrom } from "rxjs";
+import { firstValueFrom, lastValueFrom } from "rxjs";
 import { Queue } from "./Queue";
-import { AciveDownload, ViofoCam, VIOFOVideoExtended } from "./Viofo";
+import { ViofoCam, VIOFOVideoExtended } from "./Viofo";
 import { getLogger } from "./logging";
 import ProgressBar from "progress";
+import { AciveDownload } from "./DashCam";
 const log = getLogger("DownloadStrategy")
 
 // Custom comparison function to sort by dateProperty
@@ -15,8 +16,6 @@ function compareByDate(a: VIOFOVideoExtended, b: VIOFOVideoExtended): number {
 class DownloadError extends Error{
 
 }
-
-
 
 
 export class DownloadStrategy {
@@ -78,25 +77,33 @@ export class DownloadStrategy {
     await this.updateQueue();
     let v: VIOFOVideoExtended | undefined;
     while(v = this.videoQueue.dequeue()) {
+
+      if (!v || typeof v == "undefined") {
+        continue;
+      }
+
       try {
-        const progressBar = new ProgressBar('-> downloading [:bar] :percent :etas :currM MB', {
+
+        const progressBar = new ProgressBar(`:dPath ->  :status [:bar] :percent :currM MB / :sizeM MB`, {
           width: 40,
           complete: '=',
           incomplete: ' ',
           renderThrottle: 250,
-          total: parseInt(v.SIZE),
-    
+          total: parseInt(v.SIZE)
         })
-        this.currentDownloads[v.FPATH] = {
-          lastChunkTimestamp: Date.now(),
-          Video: v
-        }
+        
         const download = this.camera.DownloadVideo(v);
+        this.currentDownloads[v.FPATH] = await firstValueFrom(download);
         download.subscribe(s=>{
-          progressBar.tick(s.bytesReceived, {'currM': (s.bytesReceived / 1024000).toFixed(2)})
+          progressBar.tick(s.lastChunkSize, {
+            "dPath": s.targetPath,
+            "status": s.status,
+            'currM': (s.bytesReceived / 1024000).toFixed(2),
+            'sizeM': (s.size / 1024000).toFixed(2)
+          })
         })
 
-        await lastValueFrom(download)
+        await lastValueFrom(download);
         await this.camera.DeleteVideo(v);
         delete this.currentDownloads[v.FPATH];
       }

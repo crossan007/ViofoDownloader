@@ -13,6 +13,7 @@ export type AciveDownload<T> = {
   url: string
   size: number
   bytesReceived: number
+  lastChunkSize: number
 }
 
 

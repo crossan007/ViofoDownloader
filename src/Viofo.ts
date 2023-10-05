@@ -83,71 +83,81 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
       bytesReceived: 0,
       size: -1,
       lastChunkTimestamp: -1,
+      lastChunkSize: -1
     }
     activeDownload.targetPath= path.join(activeDownload.targetBase,activeDownload.videoPath.base+".partial")
 
-    return new Observable<AciveDownload<VIOFOVideoExtended>>((observer)=>{
-    
-        fs.mkdirSync(activeDownload.targetBase,{recursive: true})
-        let ws = fs.createWriteStream(activeDownload.targetPath);
+    const o = new Observable<AciveDownload<VIOFOVideoExtended>>((observer)=>{
+  
+      fs.mkdirSync(activeDownload.targetBase,{recursive: true})
+      let localFileWriteStream = fs.createWriteStream(activeDownload.targetPath);
 
-        ws.on("ready",()=>{
-          utimesSync(activeDownload.targetPath,{
-            btime: video.StartDate.getTime()
-          })
-          activeDownload.status ="Local File Created";
-          observer.next(activeDownload);
+      localFileWriteStream.on("ready",()=>{
+        utimesSync(activeDownload.targetPath,{
+          btime: video.StartDate.getTime()
         })
-
-        ws.on("close",()=>{
-          utimesSync(activeDownload.targetPath,{
-            mtime: video.EndDate.getTime(),
-            atime: Date.now()
-          })
-          fs.renameSync(activeDownload.targetPath, path.join(activeDownload.targetBase,activeDownload.videoPath.base));
-          activeDownload.status ="Local File Closed";
-          observer.next(activeDownload);
-        });
-      
-        const responsePromise = Axios({
-          url: activeDownload.url,
-          method: "GET",
-          responseType: "stream"
-        })
-
-        activeDownload.status ="Requested";
+        activeDownload.status ="Local File Created";
         observer.next(activeDownload);
-        
+      })
+
+      localFileWriteStream.on("close",()=>{
+        utimesSync(activeDownload.targetPath,{
+          mtime: video.EndDate.getTime(),
+          atime: Date.now()
+        })
+        const partialPath = activeDownload.targetPath;
+        activeDownload.targetPath = path.join(activeDownload.targetBase,activeDownload.videoPath.base)
+        fs.renameSync(partialPath,activeDownload.targetPath);
+        activeDownload.status ="Local File Closed";
+        observer.next(activeDownload);
+        observer.complete()
+      });
     
-        responsePromise.then((response)=>{
+      const responsePromise = Axios({
+        url: activeDownload.url,
+        method: "GET",
+        responseType: "stream"
+      })
 
+      activeDownload.status ="Requested";
+      observer.next(activeDownload);
+      
+  
+      responsePromise.then((response)=>{
+
+        this.lastActivity = Date.now();
+        activeDownload.status = "Receiving";
+        activeDownload.size = Number.parseInt(response.headers["content-length"]);
+        if (activeDownload.size !== Number.parseInt(video.SIZE)) {
+          throw new Error("Download size doesn't match metadata size")
+        }
+        observer.next(activeDownload);
+
+        response.data.on("data",(chunk: string) => {
           this.lastActivity = Date.now();
-          activeDownload.status = "Receiving";
-          activeDownload.size = typeof response.headers["Content-Length"] == "number" ? response.headers["Content-Length"] : -1
-
+          activeDownload.lastChunkTimestamp = Date.now();
+          activeDownload.bytesReceived += chunk.length;
+          activeDownload.lastChunkSize = chunk.length;
           observer.next(activeDownload);
-
-          response.data.on("data",(chunk: string) => {
-            this.lastActivity = Date.now();
-            activeDownload.lastChunkTimestamp = Date.now();
-            activeDownload.bytesReceived += chunk.length;
-            observer.next(activeDownload);
-          });
-          response.data.pipe(ws);
-          
-          response.data.on("end",()=>{
-            observer.complete()
-          })
-          response.data.on("error",(err: any)=>{
-            observer.error(err);
-          })
         });
-
-        responsePromise.catch((err)=>{
+        response.data.pipe(localFileWriteStream);
+        
+        response.data.on("end",()=>{
+          this.lastActivity = Date.now();
+          activeDownload.lastChunkTimestamp = Date.now();
+          observer.next(activeDownload);
+        })
+        response.data.on("error",(err: any)=>{
           observer.error(err);
-        });
-      }
-    );
+        })
+      });
+
+      responsePromise.catch((err)=>{
+        observer.error(err);
+      });
+    });
+
+    return o.pipe(share());
   }
 
   public async FormatMemory() {
