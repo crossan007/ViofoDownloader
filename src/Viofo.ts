@@ -72,7 +72,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
     const videoPath = path.parse(video.FPATH.replace(/\\/gm,"/"));
     log.log("video path", videoPath)
     const targetBase = path.join(this.getLocalDownloadDir(),`${video.Locked ? "Locked" : ""}`,`${video.StartDate.getFullYear()}`,`${video.StartDate.getUTCMonth()+1}`)
-    const targetPath = path.join(targetBase,videoPath.base)
+    const targetPath = path.join(targetBase,videoPath.base+".partial")
     fs.mkdirSync(targetBase,{recursive: true})
     
     const url = `http://${this.IPAddress}${video.FPATH.split(":")[1]}`;
@@ -94,6 +94,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
         mtime: video.EndDate.getTime(),
         atime: Date.now()
       })
+      fs.renameSync(targetPath, path.join(targetBase,videoPath.base));
     });
 
     const progressBar = new ProgressBar('-> downloading [:bar] :percent :etas :currM MB', {

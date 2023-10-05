@@ -17,7 +17,7 @@ async function run() {
     try {
       //const viofoCam = new ViofoCam("192.168.1.254")
       await viofoCam.waitForStatus();
-      await viofoCam.Reboot();
+      //await viofoCam.Reboot();
       const state = viofoCam.GetCurrentState();
       await downloader.download();
     }
