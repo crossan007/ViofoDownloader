@@ -34,9 +34,9 @@ app.get('/', (req: Request, res: Response) => {
       queue_top_20: downloader.getCurrentQueue().get().slice(0,20)
     },
     camera: {
-      lastHeartbeat: viofoCam.lastHeartbeat,
+      secondsSinceLastHeartbeat: Math.trunc((Date.now() - viofoCam.lastActivity)/1000),
+      lastHeartbeatTimestamp: viofoCam.lastActivity,
       viofoCam: viofoCam.GetCachedState(),
-     
     }
   });
 });

@@ -1,7 +1,8 @@
 import { lastValueFrom } from "rxjs";
 import { Queue } from "./Queue";
-import { ViofoCam, VIOFOVideoExtended } from "./Viofo";
+import { AciveDownload, ViofoCam, VIOFOVideoExtended } from "./Viofo";
 import { getLogger } from "./logging";
+import ProgressBar from "progress";
 const log = getLogger("DownloadStrategy")
 
 // Custom comparison function to sort by dateProperty
@@ -16,11 +17,13 @@ class DownloadError extends Error{
 }
 
 
+
+
 export class DownloadStrategy {
 
   private concurrency: number = 1;
   private videoQueue = new Queue<VIOFOVideoExtended>();
-  private currentDownloads: Record<string,VIOFOVideoExtended> = {};
+  private currentDownloads: Record<string,AciveDownload<VIOFOVideoExtended>> = {};
 
   constructor(private camera: ViofoCam, private includeParking: boolean = false) {
 
@@ -30,7 +33,7 @@ export class DownloadStrategy {
     return this.videoQueue;
   }
 
-  public getCurrentDownloads(): Record<string,VIOFOVideoExtended> {
+  public getCurrentDownloads(): Record<string,AciveDownload<VIOFOVideoExtended>> {
     return this.currentDownloads;
   }
 
@@ -76,8 +79,24 @@ export class DownloadStrategy {
     let v: VIOFOVideoExtended | undefined;
     while(v = this.videoQueue.dequeue()) {
       try {
-        this.currentDownloads[v.FPATH] = v;
-        await this.camera.DownloadVideo(v);
+        const progressBar = new ProgressBar('-> downloading [:bar] :percent :etas :currM MB', {
+          width: 40,
+          complete: '=',
+          incomplete: ' ',
+          renderThrottle: 250,
+          total: parseInt(v.SIZE),
+    
+        })
+        this.currentDownloads[v.FPATH] = {
+          lastChunkTimestamp: Date.now(),
+          Video: v
+        }
+        const download = this.camera.DownloadVideo(v);
+        download.subscribe(s=>{
+          progressBar.tick(s.bytesReceived, {'currM': (s.bytesReceived / 1024000).toFixed(2)})
+        })
+
+        await lastValueFrom(download)
         await this.camera.DeleteVideo(v);
         delete this.currentDownloads[v.FPATH];
       }

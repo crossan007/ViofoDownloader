@@ -1,6 +1,6 @@
 import  Axios, { AxiosResponse } from "axios";
-import { BehaviorSubject, scan, Subject } from "rxjs";
-import { DashCam } from "./DashCam";
+import { BehaviorSubject, Observable, scan, share, Subject } from "rxjs";
+import { AciveDownload, DashCam } from "./DashCam";
 import xml2js from "xml2js"
 import fs from "fs"
 import path from "path"
@@ -8,6 +8,8 @@ import ProgressBar from "progress";
 import { utimesSync } from 'utimes';
 import { getLogger } from "./logging";
 const log = getLogger("Viofo")
+
+
 
 interface VIOFOVideoBase  {
   // #region Properties (6)
@@ -42,7 +44,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
   // #region Properties (2)
 
   private state: SerializedState | undefined;
-  public lastHeartbeat: number = -1;
+  public lastActivity: number = -1;
 
   public GetCachedState(): SerializedState | undefined {
     return this.state;
@@ -65,61 +67,87 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
       url: `http://${this.IPAddress}/?custom=1&cmd=4003&str=${video.FPATH}`,
       method: "GET",
     })
+    this.lastActivity = Date.now();
     log.log(`Deleted ${video.FPATH}`)
   }
 
-  public async DownloadVideo(video: VIOFOVideoExtended): Promise<void> {
-    const videoPath = path.parse(video.FPATH.replace(/\\/gm,"/"));
-    log.log("video path", videoPath)
-    const targetBase = path.join(this.getLocalDownloadDir(),`${video.Locked ? "Locked" : ""}`,`${video.StartDate.getFullYear()}`,`${video.StartDate.getUTCMonth()+1}`)
-    const targetPath = path.join(targetBase,videoPath.base+".partial")
-    fs.mkdirSync(targetBase,{recursive: true})
+  public DownloadVideo(video: VIOFOVideoExtended): Observable<AciveDownload<VIOFOVideoExtended>> {
+
+    let activeDownload: AciveDownload<VIOFOVideoExtended> = {
+      status: "Preparing",
+      Video: video,
+      videoPath: path.parse(video.FPATH.replace(/\\/gm,"/")),
+      targetBase: path.join(this.getLocalDownloadDir(),`${video.Locked ? "Locked" : ""}`,`${video.StartDate.getFullYear()}`,`${video.StartDate.getUTCMonth()+1}`),
+      targetPath: "",
+      url: `http://${this.IPAddress}${video.FPATH.split(":")[1]}`,
+      bytesReceived: 0,
+      size: -1,
+      lastChunkTimestamp: -1,
+    }
+    activeDownload.targetPath= path.join(activeDownload.targetBase,activeDownload.videoPath.base+".partial")
+
+    return new Observable<AciveDownload<VIOFOVideoExtended>>((observer)=>{
     
-    const url = `http://${this.IPAddress}${video.FPATH.split(":")[1]}`;
-    log.log(`Downloading ${url} to ${targetPath}`)
-    const response = await Axios({
-      url: url,
-      method: "GET",
-      responseType: "stream"
-    })
+        fs.mkdirSync(activeDownload.targetBase,{recursive: true})
+        let ws = fs.createWriteStream(activeDownload.targetPath);
 
-    let ws = fs.createWriteStream(targetPath);
-    ws.on("ready",()=>{
-      utimesSync(targetPath,{
-        btime: video.StartDate.getTime()
-      })
-    })
-    ws.on("close",()=>{
-      utimesSync(targetPath,{
-        mtime: video.EndDate.getTime(),
-        atime: Date.now()
-      })
-      fs.renameSync(targetPath, path.join(targetBase,videoPath.base));
-    });
+        ws.on("ready",()=>{
+          utimesSync(activeDownload.targetPath,{
+            btime: video.StartDate.getTime()
+          })
+          activeDownload.status ="Local File Created";
+          observer.next(activeDownload);
+        })
 
-    const progressBar = new ProgressBar('-> downloading [:bar] :percent :etas :currM MB', {
-      width: 40,
-      complete: '=',
-      incomplete: ' ',
-      renderThrottle: 250,
-      total: parseInt(response.headers['content-length']),
+        ws.on("close",()=>{
+          utimesSync(activeDownload.targetPath,{
+            mtime: video.EndDate.getTime(),
+            atime: Date.now()
+          })
+          fs.renameSync(activeDownload.targetPath, path.join(activeDownload.targetBase,activeDownload.videoPath.base));
+          activeDownload.status ="Local File Closed";
+          observer.next(activeDownload);
+        });
+      
+        const responsePromise = Axios({
+          url: activeDownload.url,
+          method: "GET",
+          responseType: "stream"
+        })
 
-    })
-
-    response.data.on("data",(chunk: string) => {
-      let curr = progressBar.curr + chunk.length;
-      progressBar.tick(chunk.length, {'currM': (curr / 1024000).toFixed(2)})
-    });
-    response.data.pipe(ws);
+        activeDownload.status ="Requested";
+        observer.next(activeDownload);
+        
     
-    await new Promise<void>((resolve,reject)=>{
-      response.data.on("end",()=>{
-        resolve();
-      })
-      response.data.on("error",(err: any)=>{
-        reject(err)
-      })
-    })
+        responsePromise.then((response)=>{
+
+          this.lastActivity = Date.now();
+          activeDownload.status = "Receiving";
+          activeDownload.size = typeof response.headers["Content-Length"] == "number" ? response.headers["Content-Length"] : -1
+
+          observer.next(activeDownload);
+
+          response.data.on("data",(chunk: string) => {
+            this.lastActivity = Date.now();
+            activeDownload.lastChunkTimestamp = Date.now();
+            activeDownload.bytesReceived += chunk.length;
+            observer.next(activeDownload);
+          });
+          response.data.pipe(ws);
+          
+          response.data.on("end",()=>{
+            observer.complete()
+          })
+          response.data.on("error",(err: any)=>{
+            observer.error(err);
+          })
+        });
+
+        responsePromise.catch((err)=>{
+          observer.error(err);
+        });
+      }
+    );
   }
 
   public async FormatMemory() {
@@ -143,8 +171,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
   public async getHeartbeat(): Promise<number> {
     const sTime = Date.now();
     await this.RunCommand(Command.HEART_BEAT, 500);
-    this.lastHeartbeat = Date.now();
-    return this.lastHeartbeat  - sTime;
+    return this.lastActivity - sTime;
   }
 
   public async setRecording(record: boolean) {
@@ -201,6 +228,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
     catch(err) {
       throw new Error(`Failed getting metadata: ${(err as Error).message}`);
     }
+    this.lastActivity = Date.now();
     const parsed = await xml2js.parseStringPromise(response.data ,{
       explicitArray:false
     });
@@ -249,6 +277,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
   private async RunCommand(command: Command, timeout: number = 60000): Promise<AxiosResponse<any,any>> {
     const URL = `http://${this.IPAddress}/?custom=1&cmd=${command}`;
     const response = await Axios.get(URL,{timeout: timeout});
+    this.lastActivity = Date.now();
     return response   
   }
 
@@ -262,6 +291,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
   private async RunCommandWithParam(command: Command, param: string | number): Promise<AxiosResponse<any,any>> {
     const URL = `http://${this.IPAddress}/?custom=1&cmd=${command}&par=${param}`;
     const response = await Axios.get(URL);
+    this.lastActivity = Date.now();
     return response;
   }
 
