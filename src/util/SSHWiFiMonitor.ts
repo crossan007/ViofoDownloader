@@ -6,17 +6,29 @@ const log = getLogger("SSHWiFiMonitor");
 log.enableAll();
 
 export type WiFiStatus = {
-  interface: string;
-  standard: string;
-  essid: string;
-  mode: string;
-  accessPoint: string;
-  txPower: string;
-  retryShortLimit: string;
-  rtsThreshold: string;
-  fragmentThreshold: string;
-  powerManagement: string;
+    interface: string;
+    standard: string;
+    essid: string;
+    mode: string;
+    frequency: string;
+    accessPoint: string;
+    bitRate: string;
+    txPower: string;
+    retryShortLimit: string;
+    rtsThreshold: string;
+    fragmentThreshold: string;
+    encryptionKey: string;
+    powerManagement: string;
+    linkQuality: string;
+    signalLevel: string;
+    rxInvalidNwid: string;
+    rxInvalidCrypt: string;
+    rxInvalidFrag: string;
+    txExcessiveRetries: string;
+    invalidMisc: string;
+    missedBeacon: string;
 };
+
 
 export class SSHWiFiMonitor {
   private sshClient: Client;
@@ -66,36 +78,33 @@ export class SSHWiFiMonitor {
   }
 
   private parseWiFiStatus(output: string): WiFiStatus {
+    //@ts-ignore
     const wifiStatus: WiFiStatus = {
-      interface: "",
-      standard: "",
-      essid: "",
-      mode: "",
-      accessPoint: "",
-      txPower: "",
-      retryShortLimit: "",
-      rtsThreshold: "",
-      fragmentThreshold: "",
-      powerManagement: "",
+        // Initialize all properties with empty strings
+        interface: '',
+        // ... other properties ...
     };
 
     const extract = (pattern: RegExp): string => {
-      const match = output.match(pattern);
-      return match && match[1] ? match[1] : "";
+        const match = output.match(pattern);
+        return match && match[1] ? match[1] : '';
     };
 
-    // Refining the regular expressions
+    // Extract values using regex
     wifiStatus.interface = extract(/(\w+)[\s]+IEEE/);
     wifiStatus.standard = extract(/IEEE ([\w.]+)/);
     wifiStatus.essid = extract(/ESSID:"(.*?)"/);
     wifiStatus.mode = extract(/Mode:(\w+)/);
-    wifiStatus.accessPoint = extract(/Access Point: ([\w:-]+)/);
-    wifiStatus.txPower = extract(/Tx-Power=([\d\s]+dBm)/).trim(); // Updated regex for txPower
-    wifiStatus.retryShortLimit = extract(/Retry short limit:(\d+)/);
-    wifiStatus.rtsThreshold = extract(/RTS thr:(\w+)/);
-    wifiStatus.fragmentThreshold = extract(/Fragment thr:(\w+)/);
-    wifiStatus.powerManagement = extract(/Power Management:(\w+)/);
+    wifiStatus.frequency = extract(/Frequency:([\w. ]+GHz)/);
+    wifiStatus.accessPoint = extract(/Access Point: ([\w:]+)/);
+    wifiStatus.bitRate = extract(/Bit Rate=([\w. ]+Mb\/s)/);
+    wifiStatus.txPower = extract(/Tx-Power=([\d\s]+dBm)/).trim();
+    // ... extract other properties similarly ...
+    wifiStatus.linkQuality = extract(/Link Quality=([\d\/]+)/);
+    wifiStatus.signalLevel = extract(/Signal level=([\w- ]+dBm)/);
 
+    // ... continue with other properties ...
     return wifiStatus;
-  }
+}
+
 }

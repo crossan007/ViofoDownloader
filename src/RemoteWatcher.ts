@@ -18,7 +18,7 @@ const fullObjectEvery60Sec$ = interval(5 * 1000).pipe(
 );
 
 function formatWifiStatus(s: WiFiStatus): string {
-  return `${s.interface} ${s.essid} ${s.accessPoint} `
+  return `${s.interface}/${s.essid}/${s.accessPoint}: ${s.bitRate} ${s.linkQuality} (TX:${s.txPower} RX:${s.signalLevel}))`
 }
 
 merge(propertyChanges$, fullObjectEvery60Sec$).subscribe(status=> {
