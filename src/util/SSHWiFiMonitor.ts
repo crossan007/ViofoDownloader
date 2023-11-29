@@ -93,10 +93,10 @@ export class SSHWiFiMonitor {
     // Extract values using regex
     wifiStatus.interface = extract(/(\w+)[\s]+IEEE/);
     wifiStatus.standard = extract(/IEEE ([\w.]+)/);
-    wifiStatus.essid = extract(/ESSID:"(.*?)"/);
+    wifiStatus.essid = extract(/ESSID:"?(.*?)["\s]/);
     wifiStatus.mode = extract(/Mode:(\w+)/);
     wifiStatus.frequency = extract(/Frequency:([\w. ]+GHz)/);
-    wifiStatus.accessPoint = extract(/Access Point: ([\w:]+)/);
+    wifiStatus.accessPoint = extract(/Access Point: ([\w:-]+)/);
     wifiStatus.bitRate = extract(/Bit Rate=([\w. ]+Mb\/s)/);
     wifiStatus.txPower = extract(/Tx-Power=([\d\s]+dBm)/).trim();
     // ... extract other properties similarly ...

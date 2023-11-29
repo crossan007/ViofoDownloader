@@ -1,6 +1,6 @@
 
 import { getLogger } from "loglevel";
-import { interval, withLatestFrom, map, merge } from "rxjs";
+import { interval, withLatestFrom, map, merge, debounceTime } from "rxjs";
 import { distinctPropertiesChanged } from "./util/distinctPropertiesChanged";
 import { SSHWiFiMonitor, WiFiStatus } from "./util/SSHWiFiMonitor";
 const log = getLogger("Wifi Status");
@@ -18,7 +18,12 @@ const fullObjectEvery60Sec$ = interval(5 * 1000).pipe(
 );
 
 function formatWifiStatus(s: WiFiStatus): string {
-  return `${s.interface}/${s.essid}/${s.accessPoint}: ${s.bitRate} ${s.linkQuality} (TX:${s.txPower} RX:${s.signalLevel}))`
+  if ("essid" in s) {
+    return `WiFi Status: ${s.interface}/${s.essid}/${s.accessPoint}: ${s.bitRate} ${s.linkQuality} (TX:${s.txPower} RX:${s.signalLevel}))`
+  }
+  else {
+    return "Changes: " + Object.entries(s).map(([k,v])=>`${k}: ${v}`).join(" ");
+  }
 }
 
 merge(propertyChanges$, fullObjectEvery60Sec$).subscribe(status=> {
