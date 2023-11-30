@@ -140,7 +140,6 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
           activeDownload.lastChunkSize = chunk.length;
           observer.next(activeDownload);
         });
-        response.data.pipe(localFileWriteStream);
         
         response.data.on("end",()=>{
           this.lastActivity = Date.now();
@@ -148,11 +147,15 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
           observer.next(activeDownload);
         })
         response.data.on("error",(err: any)=>{
+          log.warn("Error in Response stream");
           observer.error(err);
         })
+
+        response.data.pipe(localFileWriteStream);
       });
 
       responsePromise.catch((err)=>{
+        log.warn("Error in Axios Response");
         observer.error(err);
       });
     });
