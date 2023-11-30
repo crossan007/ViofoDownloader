@@ -1,4 +1,4 @@
-import { firstValueFrom, lastValueFrom } from "rxjs";
+import { firstValueFrom, lastValueFrom, tap } from "rxjs";
 import { Queue } from "./Queue";
 import { ViofoCam, VIOFOVideoExtended } from "./Viofo";
 import { getLogger } from "./logging";
@@ -44,7 +44,7 @@ export class DownloadStrategy {
     }
     const freeSpace = await this.camera.getFreeSpace();
     log.log(`Refreshing download queue. Camera latency: ${cameraLatency} ms. Camera free space: ${freeSpace}`);
-    const r = (await lastValueFrom(this.camera.FetchMetadata())).filter(v=> v.Finished);
+    const r = (await this.camera.FetchMetadata()).filter(v=> v.Finished);
    
     const lockedVideos = r.filter(v=>v.Locked).sort(compareByDate);
     const lockedNotParking = lockedVideos.filter(v=>v.RecordingMode != "Parking")
@@ -75,35 +75,51 @@ export class DownloadStrategy {
 
   public async download() {
     await this.updateQueue();
-    let v: VIOFOVideoExtended | undefined;
-    while(v = this.videoQueue.dequeue()) {
+    try {
+      await this.downloadLoop()
+    }
+    catch (err) {
+      try { 
+        await this.updateQueue();
+      }
+      catch (err) {
+        throw new DownloadError("Download failed; camera offline")
+      }
+    }
 
-      if (!v || typeof v == "undefined") {
+  }
+
+  private async downloadLoop() { 
+    let v: VIOFOVideoExtended;
+    while(v = this.videoQueue.dequeue()!) {
+      if (!v || typeof v == "undefined" ) {
         continue;
       }
+  
+      const progressBar = new ProgressBar(`:dPath ->  :status [:bar] :percent :currM MB / :sizeM MB`, {
+        width: 40,
+        complete: '=',
+        incomplete: ' ',
+        renderThrottle: 250,
+        total: parseInt(v.SIZE)
+      })
+      
+      const download = this.camera.DownloadVideo(v);
+      this.currentDownloads[v.FPATH] = await firstValueFrom(download);
 
-      try {
-
-        const progressBar = new ProgressBar(`:dPath ->  :status [:bar] :percent :currM MB / :sizeM MB`, {
-          width: 40,
-          complete: '=',
-          incomplete: ' ',
-          renderThrottle: 250,
-          total: parseInt(v.SIZE)
-        })
-        
-        const download = this.camera.DownloadVideo(v);
-        this.currentDownloads[v.FPATH] = await firstValueFrom(download);
-        download.subscribe(s=>{
+      const downloadFinishedPromise = lastValueFrom(download.pipe(
+        tap(s=>{
           progressBar.tick(s.lastChunkSize, {
             "dPath": s.targetPath,
             "status": s.status,
             'currM': (s.bytesReceived / 1024000).toFixed(2),
             'sizeM': (s.size / 1024000).toFixed(2)
-          })
+          });
         })
+      ));
 
-        await lastValueFrom(download);
+      try { 
+        await downloadFinishedPromise
         await this.camera.DeleteVideo(v);
         delete this.currentDownloads[v.FPATH];
       }
@@ -111,15 +127,8 @@ export class DownloadStrategy {
         delete this.currentDownloads[v.FPATH];
         // TODO: If one download fails, check to see if the camera is still alive;  Cancel remaining downloads if it's gone
         // TODO: Delete the failed download attempt
-        log.warn(`Failed to download video: ${v.FPATH}`, err)
-        try { 
-          await this.updateQueue();
-        }
-        catch (err) {
-          throw new DownloadError("Download failed; camera offline")
-        }
+        throw new DownloadError(`Failed to download video: ${v.FPATH}`);
       }
-      
     }
   }
 

@@ -1,6 +1,6 @@
 import  Axios, { AxiosResponse } from "axios";
 import { BehaviorSubject, Observable, ReplaySubject, scan, share, Subject } from "rxjs";
-import { AciveDownload, DashCam } from "./DashCam";
+import { AciveDownload, CameraError, DashCam } from "./DashCam";
 import xml2js from "xml2js"
 import fs from "fs"
 import path from "path"
@@ -156,7 +156,6 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
     });
 
     responsePromise.catch((err)=>{
-      debugger;
       log.warn("Error in Axios Response");
       observer.error(err);
     });
@@ -219,7 +218,7 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
 
   // #region Protected Methods (1)
 
-  protected async requestHTTTP() {
+  public async FetchMetadata() {
     const ROURL = `http://${this.IPAddress}/?custom=1&cmd=${Command.GET_FILE_LIST}`;
     const parseParking = (path: string): RecordingMode => { 
       return (path.includes("Parking") || path.includes("PF.MP4") || path.includes("PR.MP4") || path.includes("PI.MP4")) ? "Parking" : "Normal";
@@ -276,12 +275,10 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
           Finished: true // TODO: figure out how to figure this out
         })
       }
-      this.MetadataStream.next(allVideos);
-      this.MetadataStream.complete();
+      return allVideos;
     }
     catch (err) {
-      log.log("Failed parsing metadata", err)
-      this.MetadataStream.error(err);
+      throw new CameraError("Failed parsing metadata")
     }
   }
 

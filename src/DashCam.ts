@@ -3,6 +3,9 @@ import { BehaviorSubject, Observable, Subject } from "rxjs";
 import path from "path";
 import fs from "fs";
 
+export class CameraError extends Error{
+}
+
 export type AciveDownload<T> = {
   status: string
   lastChunkTimestamp: number,
@@ -16,35 +19,16 @@ export type AciveDownload<T> = {
   lastChunkSize: number
 }
 
-
 export abstract class DashCam<VideoFields>{
-  // #region Properties (2)
+  // #region Public Abstract Methods (3)
 
-  protected MetadataStream: BehaviorSubject<VideoFields[]> =
-  new BehaviorSubject<VideoFields[]>([]);
-
-  // #endregion Properties (2)
-
-  // #region Public Methods (1)
-
-  public FetchMetadata() {
-    this.requestHTTTP();
-    return this.MetadataStream;
-  }
-
-  // #endregion Public Methods (1)
-
-  // #region Public Abstract Methods (1)
-
-  public abstract DownloadVideo(video: VideoFields):  Observable<AciveDownload<VideoFields>>
-  
   public abstract DeleteVideo(video: VideoFields): Promise<void>
+  public abstract DownloadVideo(video: VideoFields):  Observable<AciveDownload<VideoFields>>
+  public abstract FetchMetadata(): Promise<VideoFields[]>
 
-  // #endregion Public Abstract Methods (1)
+  // #endregion Public Abstract Methods (3)
 
-  // #region Protected Abstract Methods (1)
-
-  protected abstract requestHTTTP(): Promise<void> | void;
+  // #region Protected Methods (1)
 
   protected getLocalDownloadDir() {
     const target = path.join(path.dirname(__dirname),"download")
@@ -54,5 +38,5 @@ export abstract class DashCam<VideoFields>{
     return target;
   }
 
-  // #endregion Protected Abstract Methods (1)
+  // #endregion Protected Methods (1)
 }

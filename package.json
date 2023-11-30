@@ -11,6 +11,7 @@
   "dependencies": {
     "@types/express": "^4.17.18",
     "@types/progress": "^2.0.5",
+    "@types/ssh2": "^1.11.18",
     "@types/xml2js": "^0.4.12",
     "axios": "^1.5.0",
     "express": "^4.18.2",
@@ -20,6 +21,7 @@
     "node-html-parser": "^6.1.10",
     "progress": "^2.0.3",
     "rxjs": "^7.8.1",
+    "ssh2": "^1.14.0",
     "ts-node": "^10.9.1",
     "typescript": "^5.2.2",
     "utimes": "^5.2.0",

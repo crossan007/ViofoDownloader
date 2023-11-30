@@ -15,14 +15,16 @@ const downloader = new DownloadStrategy(viofoCam);
 async function run() {
   while(true) {
     try {
-      //const viofoCam = new ViofoCam("192.168.1.254")
       await viofoCam.waitForStatus();
-      //await viofoCam.Reboot();
-      const state = viofoCam.GetCurrentState();
+    }
+    catch(err) {
+      log.warn("Failed to get status");
+    }
+    try {
       await downloader.download();
     }
     catch(err){
-      log.warn("Camera failure ", err)
+      log.warn("Camera failure during download", err)
     }
   }
 }
