@@ -62,8 +62,8 @@ export class DownloadStrategy {
 
     // Download driving videos second
     
-    this.videoQueue.enqueue(normalRecordings.filter(v=>v.Lens == "Front"));
-    this.videoQueue.enqueue(normalRecordings.filter(v=>v.Lens != "Front"));
+    this.videoQueue.enqueue(normalRecordings.filter(v=>v.Lens == "Front").sort((a,b)=>a.SIZE < b.SIZE ? -1 : 1));
+    this.videoQueue.enqueue(normalRecordings.filter(v=>v.Lens != "Front").sort((a,b)=>a.SIZE < b.SIZE ? -1 : 1));
 
     if (this.includeParking) {
       // Download Parking videos last
