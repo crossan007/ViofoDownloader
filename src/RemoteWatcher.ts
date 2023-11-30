@@ -40,7 +40,7 @@ function formatNetworkScan(s: ScanResults): string {
     }
   });
   
-  return s.interface +": " + networks.map(n=>`\t(${n.accessPoints.length})\t${formatString(n.ssid,20)}\t[${n.accessPoints.map(ap=>ap.signalLevel).join(",")}]`).join("\n");
+  return `SSIDs [${s.interface}]: ` + networks.map(n=>`\t(${n.accessPoints.length})\t${formatString(n.ssid,20)}\t[${n.accessPoints.map(ap=>ap.signalLevel).join(",")}]`).join("\n");
 }
 
 
