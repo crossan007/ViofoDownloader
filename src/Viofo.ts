@@ -1,5 +1,5 @@
 import  Axios, { AxiosResponse } from "axios";
-import { BehaviorSubject, Observable, scan, share, Subject } from "rxjs";
+import { BehaviorSubject, Observable, ReplaySubject, scan, share, Subject } from "rxjs";
 import { AciveDownload, DashCam } from "./DashCam";
 import xml2js from "xml2js"
 import fs from "fs"
@@ -87,80 +87,82 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
     }
     activeDownload.targetPath= path.join(activeDownload.targetBase,activeDownload.videoPath.base+".partial")
 
-    const o = new Observable<AciveDownload<VIOFOVideoExtended>>((observer)=>{
-  
-      fs.mkdirSync(activeDownload.targetBase,{recursive: true})
-      let localFileWriteStream = fs.createWriteStream(activeDownload.targetPath);
-
-      localFileWriteStream.on("ready",()=>{
-        utimesSync(activeDownload.targetPath,{
-          btime: video.StartDate.getTime()
-        })
-        activeDownload.status ="Local File Created";
-        observer.next(activeDownload);
-      })
-
-      localFileWriteStream.on("close",()=>{
-        utimesSync(activeDownload.targetPath,{
-          mtime: video.EndDate.getTime(),
-          atime: Date.now()
-        })
-        const partialPath = activeDownload.targetPath;
-        activeDownload.targetPath = path.join(activeDownload.targetBase,activeDownload.videoPath.base)
-        fs.renameSync(partialPath,activeDownload.targetPath);
-        activeDownload.status ="Local File Closed";
-        observer.next(activeDownload);
-        observer.complete()
-      });
+    const observer = new ReplaySubject<AciveDownload<VIOFOVideoExtended>>(1);
     
-      const responsePromise = Axios({
-        url: activeDownload.url,
-        method: "GET",
-        responseType: "stream"
+  
+    fs.mkdirSync(activeDownload.targetBase,{recursive: true})
+    let localFileWriteStream = fs.createWriteStream(activeDownload.targetPath);
+
+    localFileWriteStream.on("ready",()=>{
+      utimesSync(activeDownload.targetPath,{
+        btime: video.StartDate.getTime()
+      })
+      activeDownload.status ="Local File Created";
+      observer.next(activeDownload);
+    })
+
+    localFileWriteStream.on("close",()=>{
+      utimesSync(activeDownload.targetPath,{
+        mtime: video.EndDate.getTime(),
+        atime: Date.now()
+      })
+      const partialPath = activeDownload.targetPath;
+      activeDownload.targetPath = path.join(activeDownload.targetBase,activeDownload.videoPath.base)
+      fs.renameSync(partialPath,activeDownload.targetPath);
+      activeDownload.status ="Local File Closed";
+      observer.next(activeDownload);
+      observer.complete()
+    });
+  
+    const responsePromise = Axios({
+      url: activeDownload.url,
+      method: "GET",
+      responseType: "stream"
+    })
+
+    activeDownload.status ="Requested";
+    observer.next(activeDownload);
+    
+
+    responsePromise.then((response)=>{
+
+      this.lastActivity = Date.now();
+      activeDownload.status = "Receiving";
+      activeDownload.size = Number.parseInt(response.headers["content-length"]);
+      if (activeDownload.size !== Number.parseInt(video.SIZE)) {
+        throw new Error("Download size doesn't match metadata size")
+      }
+      observer.next(activeDownload);
+
+      response.data.on("data",(chunk: string) => {
+        this.lastActivity = Date.now();
+        activeDownload.lastChunkTimestamp = Date.now();
+        activeDownload.bytesReceived += chunk.length;
+        activeDownload.lastChunkSize = chunk.length;
+        observer.next(activeDownload);
+      });
+      
+      response.data.on("end",()=>{
+        this.lastActivity = Date.now();
+        activeDownload.lastChunkTimestamp = Date.now();
+        observer.next(activeDownload);
+      })
+      response.data.on("error",(err: any)=>{
+        log.warn("Error in Response stream");
+        observer.error(err);
       })
 
-      activeDownload.status ="Requested";
-      observer.next(activeDownload);
-      
-  
-      responsePromise.then((response)=>{
-
-        this.lastActivity = Date.now();
-        activeDownload.status = "Receiving";
-        activeDownload.size = Number.parseInt(response.headers["content-length"]);
-        if (activeDownload.size !== Number.parseInt(video.SIZE)) {
-          throw new Error("Download size doesn't match metadata size")
-        }
-        observer.next(activeDownload);
-
-        response.data.on("data",(chunk: string) => {
-          this.lastActivity = Date.now();
-          activeDownload.lastChunkTimestamp = Date.now();
-          activeDownload.bytesReceived += chunk.length;
-          activeDownload.lastChunkSize = chunk.length;
-          observer.next(activeDownload);
-        });
-        
-        response.data.on("end",()=>{
-          this.lastActivity = Date.now();
-          activeDownload.lastChunkTimestamp = Date.now();
-          observer.next(activeDownload);
-        })
-        response.data.on("error",(err: any)=>{
-          log.warn("Error in Response stream");
-          observer.error(err);
-        })
-
-        response.data.pipe(localFileWriteStream);
-      });
-
-      responsePromise.catch((err)=>{
-        log.warn("Error in Axios Response");
-        observer.error(err);
-      });
+      response.data.pipe(localFileWriteStream);
     });
 
-    return o.pipe(share());
+    responsePromise.catch((err)=>{
+      debugger;
+      log.warn("Error in Axios Response");
+      observer.error(err);
+    });
+    
+
+    return observer
   }
 
   public async FormatMemory() {
