@@ -29,10 +29,31 @@ export type WiFiStatus = {
     missedBeacon: string;
 };
 
+export type NetworkScanResult = {
+  address: string;
+  channel: string;
+  frequency: string;
+  quality: string;
+  signalLevel: string;
+  encryptionKey: string;
+  essid: string;
+  bitRates: string[];
+  mode: string;
+  extra: string[];
+  informationElements: string[];
+};
+
+export type ScanResults = {
+  interface: string;
+  accessPoints: NetworkScanResult[];
+};
+
+
 
 export class SSHWiFiMonitor {
   private sshClient: Client;
   public wifiStatusSubject = new ReplaySubject<WiFiStatus>(1); // Keeps the latest value
+  public visibleNetworksSubject = new ReplaySubject<ScanResults>(1); // Keeps the latest value
 
   constructor(
     private host: string,
@@ -46,7 +67,8 @@ export class SSHWiFiMonitor {
   private setupWiFiMonitoring() {
     this.sshClient.on("ready", () => {
       log.debug(`SSH: Connected - ${this.username}@${this.host}`);
-      setInterval(()=>this.runCheckCommand(), 1000)
+      setInterval(()=>this.checkiwconfig(), 500)
+      setInterval(()=>this.checkVisibleNetworks(),5000);
     });
 
     this.sshClient.connect({
@@ -56,7 +78,7 @@ export class SSHWiFiMonitor {
     });
   }
 
-  private runCheckCommand() {
+  private checkiwconfig() {
     this.sshClient.exec('bash -l -c "iwconfig wlan0"', (err, stream) => {
       if (err) {
         throw err;
@@ -73,6 +95,32 @@ export class SSHWiFiMonitor {
       stream.stderr.on("data", (data: Buffer) => {
         // Handle standard error output
         console.error("STDERR:", data.toString());
+      });
+    });
+  }
+
+  private checkVisibleNetworks() {
+    this.sshClient.exec('bash -l -c "iwlist wlan0 scan"', (err, stream) => {
+      if (err) {
+        throw err;
+      }
+
+      let fullOutput = "";
+
+      stream.stdout.on("data", (data: Buffer) => {
+        if (fullOutput.length > 0 || /^wlan0/gim.test(data.toString())){
+          fullOutput += data.toString();
+        }
+      });
+
+      stream.stderr.on("data", (data: Buffer) => {
+        // Handle standard error output
+        console.error("STDERR:", data.toString());
+      });
+
+      stream.on("close", (code: any , signal: any) => {
+        const status = this.parseIwlistScan(fullOutput);
+        this.visibleNetworksSubject.next(status);
       });
     });
   }
@@ -105,6 +153,61 @@ export class SSHWiFiMonitor {
 
     // ... continue with other properties ...
     return wifiStatus;
+  }
+
+  private parseIwlistScan(output: string): ScanResults {
+  const scanResults: ScanResults = { interface: '', accessPoints: [] };
+
+  // Extract interface
+  const interfaceMatch = output.match(/(\w+)\s+Scan completed/);
+  if (interfaceMatch) {
+      scanResults.interface = interfaceMatch[1];
+  }
+
+  // Split by cell/network
+  const networkSections = output.split(/Cell \d+ - Address:/).slice(1);
+
+  networkSections.forEach(section => {
+      const network: NetworkScanResult = {
+          address: '',
+          channel: '',
+          frequency: '',
+          quality: '',
+          signalLevel: '',
+          encryptionKey: '',
+          essid: '',
+          bitRates: [],
+          mode: '',
+          extra: [],
+          informationElements: []
+      };
+
+      const extract = (pattern: RegExp, group = 1): string => {
+          const match = section.match(pattern);
+          return match ? match[group].trim() : '';
+      };
+
+      network.address = extract(/Address: ([\w:]+)/);
+      network.channel = extract(/Channel:(\d+)/);
+      network.frequency = extract(/Frequency:([\w. ]+GHz)/);
+      network.quality = extract(/Quality=([\d\/]+)\s+Signal level=([\w- ]+dBm)/, 1);
+      network.signalLevel = extract(/Quality=([\d\/]+)\s+Signal level=([\w- ]+dBm)/, 2);
+      network.encryptionKey = extract(/Encryption key:(\w+)/);
+      network.essid = extract(/ESSID:"([^"]+)"/);
+      network.bitRates = (section.match(/Bit Rates:(.+)/g) || [])
+          .flatMap(br => br.replace('Bit Rates:', '').trim().split(';').map(rate => rate.trim()));
+      network.mode = extract(/Mode:(\w+)/);
+      network.extra = (section.match(/Extra: (.+)/g) || []).map(e => e.replace('Extra:', '').trim());
+      network.informationElements = (section.match(/IE: (.+)/g) || []).map(ie => ie.replace('IE:', '').trim());
+
+      scanResults.accessPoints.push(network);
+  });
+
+  return scanResults;
 }
 
+
+
+
 }
+
