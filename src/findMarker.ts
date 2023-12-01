@@ -5,12 +5,12 @@ import * as wav from 'wav';
 import fs from 'fs';
 import path from 'path';
 import { buffer } from 'rxjs';
+import { openFFPlayWithOffset, openVLCWithOffset } from './VLC';
 
 const log = getLogger('Analyze');
 log.enableAll();
 
-// Specify the input video file
-const inputVideoPath = path.resolve(__dirname, '../download/Locked/2023/11/2023_1108_081636_F.MP4');
+
 
 // Define the specific sound you want to detect (e.g., a keyword or pattern)
 const soundToDetect = 'example_sound';
@@ -89,9 +89,7 @@ async function detectLoudestSoundInAudioStream(audioStream: PassThrough): Promis
           const writer = new wav.FileWriter(extractedAudioPath,{ sampleRate: fmt.sampleRate, bitDepth: fmt.bitDepth, channels: fmt.channels });
           writer.write(audioBuffer,"binary",()=>{
             log.info(`Extracted audio written to ${extractedAudioPath}`)
-          });
-          log.debug("next");
-          
+          });          
         }
         resolve(loudestTimestamp);
       } else {
@@ -102,17 +100,47 @@ async function detectLoudestSoundInAudioStream(audioStream: PassThrough): Promis
   });
 }
 
-async function main() {
+async function processFile(filePath: string) {
   try {
+    // Specify the input video file
+    const inputVideoPath = path.resolve(filePath);
     const audioStream = extractAudioStreamFromVideo(inputVideoPath);
     const loudestTimestamp = await detectLoudestSoundInAudioStream(audioStream);
     log.debug(`Loudest timestamp ${loudestTimestamp}`);
 
-    if (loudestTimestamp >= 0) {
-      // Continue processing or extracting audio as needed
-    }
+    
+    await openFFPlayWithOffset(inputVideoPath, loudestTimestamp);
+   
   } catch (error) {
     console.error('Error:', error);
+  }
+}
+
+// Function to recursively list all files in a directory and its subdirectories
+function getAllFiles(directoryPath: string) {
+  const files = fs.readdirSync(directoryPath);
+  let fileList: string[] = [];
+
+  files.forEach((file) => {
+    const filePath = path.join(directoryPath, file);
+    const stat = fs.statSync(filePath);
+
+    if (stat.isDirectory()) {
+      // If it's a directory, recursively call the function
+      fileList = fileList.concat(getAllFiles(filePath));
+    } else {
+      // If it's a file, add it to the list
+      fileList.push(filePath);
+    }
+  });
+
+  return fileList;
+}
+
+async function main() {
+  const vids = getAllFiles(path.resolve(__dirname,"../download/Locked"));
+  for (let v of vids) {
+    await processFile(v);
   }
 }
 
