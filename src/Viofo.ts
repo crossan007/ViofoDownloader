@@ -7,6 +7,7 @@ import path from "path"
 import ProgressBar from "progress";
 import { utimesSync } from 'utimes';
 import { getLogger } from "./logging";
+import { sleep } from "./util/sleep";
 const log = getLogger("Viofo")
 
 
@@ -171,10 +172,17 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
   }
 
   public async Reboot() {
-    log.info("Rebooting camera...")
-    await this.RunCommand(Command.RESTART_CAMERA)
-    await this.waitForStatus(false);
-    await this.waitForStatus(true);
+    try {
+      log.info("Rebooting camera...")
+      await this.RunCommand(Command.RESTART_CAMERA)
+      await sleep(1000);
+      await this.waitForStatus(false);
+      await this.waitForStatus(true);
+    }
+    catch(err) {
+      throw new Error("Rebooting camera failed")
+    }
+   
   }
 
   public async getFreeSpace(): Promise<string> {

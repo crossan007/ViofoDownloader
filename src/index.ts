@@ -3,6 +3,7 @@ import { ViofoCam } from "./Viofo";
 import express, { Request, Response } from 'express';
 import mdns, { ServiceType } from 'mdns-js';
 import { enableLogs, getLogger } from "./logging";
+import { sleep } from "./util/sleep";
 
 enableLogs()
 const log = getLogger("Main")
@@ -15,16 +16,24 @@ const downloader = new DownloadStrategy(viofoCam);
 async function run() {
   while(true) {
     try {
-      await viofoCam.waitForStatus();
-    }
-    catch(err) {
-      log.warn("Failed to get status");
-    }
-    try {
-      await downloader.download();
+      try {
+        await viofoCam.waitForStatus();
+      }
+      catch(err) {
+        log.warn("Failed to get status");
+        await viofoCam.Reboot();
+        continue;
+      }
+      try {
+        await downloader.download();
+      }
+      catch(err){
+        log.warn("Camera failure during download", err)
+        await viofoCam.Reboot();
+      }
     }
     catch(err){
-      log.warn("Camera failure during download", err)
+      await sleep(1000);
     }
   }
 }
