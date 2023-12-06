@@ -2,7 +2,7 @@
 import { getLogger } from "loglevel";
 import { interval, withLatestFrom, map, merge, debounceTime } from "rxjs";
 import { distinctPropertiesChanged } from "./util/distinctPropertiesChanged";
-import { ScanResults, SSHWiFiMonitor, WiFiStatus } from "./util/SSHWiFiMonitor";
+import { ScanResults, SSHWiFiMonitor, WiFiStatus } from "./classes/SSHWiFiMonitor";
 import { formatString, truncateWithEllipsis } from "./util/stringFuncs";
 const log = getLogger("Wifi Status");
 log.enableAll();

@@ -2,7 +2,7 @@ import { DownloadStrategy } from "./DownloadStrategy";
 import { ViofoCam } from "./Viofo";
 import express, { Request, Response } from 'express';
 import mdns, { ServiceType } from 'mdns-js';
-import { enableLogs, getLogger } from "./logging";
+import { enableLogs, getLogger } from "./classes/logging";
 import { sleep } from "./util/sleep";
 
 enableLogs()

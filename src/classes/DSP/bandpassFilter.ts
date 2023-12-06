@@ -1,24 +1,36 @@
-export class BandpassFilter {
-  sampleRate: number;
-  centerFrequency: number;
-  bandwidth: number;
-  xn1: number;
-  xn2: number;
-  yn1: number;
-  yn2: number;
-  b0: number;
-  b1: number;
-  b2: number;
-  a0: number;
-  a1: number;
-  a2: number;
-  constructor(sampleRate: number, centerFrequency: number, bandwidth: number) {
-    this.sampleRate = sampleRate; // Sample rate in Hz
+import { DSPBase, ParsedWavSamples } from "./DSPBase";
+import { PassThrough } from "stream";
+import { getLogger } from "loglevel";
+import * as wav from "wav";
+import { Subject } from "rxjs";
+
+const log = getLogger("BandpassFilter");
+log.enableAll();
+
+export class BandpassFilter extends DSPBase {
+  private centerFrequency: number;
+  private bandwidth: number;
+  private xn1: number;
+  private xn2: number;
+  private yn1: number;
+  private yn2: number;
+  private b0: number;
+  private b1: number;
+  private b2: number;
+  private a0: number;
+  private a1: number;
+  private a2: number;
+
+  public filteredStream = new Subject<number>();
+
+  constructor(source: ParsedWavSamples, centerFrequency: number, bandwidth: number) {
+    super(source);
+    this.sampleRate = this.sampleRate; // Sample rate in Hz
     this.centerFrequency = centerFrequency; // Center frequency of the bandpass filter in Hz
     this.bandwidth = bandwidth; // Bandwidth of the filter in Hz
 
     // Filter coefficients
-    const w0 = (2 * Math.PI * centerFrequency) / sampleRate;
+    const w0 = (2 * Math.PI * centerFrequency) / this.sampleRate;
     const Q = centerFrequency / bandwidth;
     const alpha = Math.sin(w0) / (2 * Q);
 
@@ -37,7 +49,7 @@ export class BandpassFilter {
     this.a2 = 1 - alpha;
   }
 
-  filter(sample: number) {
+  protected processSample(sample: number) {
     // Apply the bandpass filter to the input sample
     const yn =
       (this.b0 / this.a0) * sample +
@@ -52,7 +64,6 @@ export class BandpassFilter {
     this.yn2 = this.yn1;
     this.yn1 = yn;
 
-    return yn;
+    this.filteredStream.next(yn);
   }
 }
-

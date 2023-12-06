@@ -1,7 +1,7 @@
 import { firstValueFrom, lastValueFrom, tap } from "rxjs";
-import { Queue } from "./Queue";
+import { Queue } from "./classes/Queue";
 import { ViofoCam, VIOFOVideoExtended } from "./Viofo";
-import { getLogger } from "./logging";
+import { getLogger } from "./classes/logging";
 import ProgressBar from "progress";
 import { AciveDownload } from "./DashCam";
 const log = getLogger("DownloadStrategy")
@@ -105,7 +105,7 @@ export class DownloadStrategy {
       })
       
       const download = this.camera.DownloadVideo(v);
-      this.currentDownloads[v.FPATH] = await firstValueFrom(download);
+      const firstPromise = firstValueFrom(download);
 
       const downloadFinishedPromise = lastValueFrom(download.pipe(
         tap(s=>{
@@ -119,6 +119,7 @@ export class DownloadStrategy {
       ));
 
       try { 
+        this.currentDownloads[v.FPATH] = await firstPromise
         await downloadFinishedPromise
         await this.camera.DeleteVideo(v);
         delete this.currentDownloads[v.FPATH];
