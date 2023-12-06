@@ -31,7 +31,7 @@ export abstract class DashCam<VideoFields>{
   // #region Protected Methods (1)
 
   protected getLocalDownloadDir() {
-    const target = path.join(path.dirname(__dirname),"download")
+    const target = path.resolve(__dirname,"../../../download")
     if (!fs.existsSync(target)) {
       fs.mkdirSync(target,{recursive: true});
     }
