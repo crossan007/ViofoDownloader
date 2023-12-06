@@ -1,7 +1,7 @@
 import { firstValueFrom, lastValueFrom, tap } from "rxjs";
-import { Queue } from "./classes/Queue";
+import { Queue } from "../Queue";
 import { ViofoCam, VIOFOVideoExtended } from "./Viofo";
-import { getLogger } from "./classes/logging";
+import { getLogger } from "../logging";
 import ProgressBar from "progress";
 import { AciveDownload } from "./DashCam";
 const log = getLogger("DownloadStrategy")

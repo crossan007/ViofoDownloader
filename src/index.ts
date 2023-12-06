@@ -1,5 +1,5 @@
-import { DownloadStrategy } from "./DownloadStrategy";
-import { ViofoCam } from "./Viofo";
+import { DownloadStrategy } from "./classes/NVR/DownloadStrategy";
+import { ViofoCam } from "./classes/NVR/Viofo";
 import express, { Request, Response } from 'express';
 import mdns, { ServiceType } from 'mdns-js';
 import { enableLogs, getLogger } from "./classes/logging";

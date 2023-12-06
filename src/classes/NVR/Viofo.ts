@@ -6,8 +6,8 @@ import fs from "fs"
 import path from "path"
 import ProgressBar from "progress";
 import { utimesSync } from 'utimes';
-import { getLogger } from "./classes/logging";
-import { sleep } from "./util/sleep";
+import { getLogger } from "../logging";
+import { sleep } from "../../util/sleep";
 const log = getLogger("Viofo")
 
 
