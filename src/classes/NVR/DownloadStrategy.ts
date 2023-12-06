@@ -104,7 +104,7 @@ export class DownloadStrategy {
 
     priorityBucket.addBucket(4, {
       name: "Parking",
-      enable: false,
+      enable: this.includeParking,
       filter: (v) => v.RecordingMode == "Parking",
       sort: NewestFrontCameraVideosFirst,
     });

@@ -86,16 +86,17 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
       lastChunkTimestamp: -1,
       lastChunkSize: -1
     }
-    activeDownload.targetPath= path.join(activeDownload.targetBase,activeDownload.videoPath.base+".partial")
+    activeDownload.targetPath = path.join(activeDownload.targetBase,activeDownload.videoPath.base)
+    const partialPath = path.join(activeDownload.targetPath+".partial")
 
     const observer = new ReplaySubject<AciveDownload<VIOFOVideoExtended>>(1);
     
   
     fs.mkdirSync(activeDownload.targetBase,{recursive: true})
-    let localFileWriteStream = fs.createWriteStream(activeDownload.targetPath);
+    let localFileWriteStream = fs.createWriteStream(partialPath);
 
     localFileWriteStream.on("ready",()=>{
-      utimesSync(activeDownload.targetPath,{
+      utimesSync(partialPath,{
         btime: video.StartDate.getTime()
       })
       activeDownload.status ="Local File Created";
@@ -103,12 +104,10 @@ export class ViofoCam extends DashCam<VIOFOVideoExtended> {
     })
 
     localFileWriteStream.on("close",()=>{
-      utimesSync(activeDownload.targetPath,{
+      utimesSync(partialPath,{
         mtime: video.EndDate.getTime(),
         atime: Date.now()
       })
-      const partialPath = activeDownload.targetPath;
-      activeDownload.targetPath = path.join(activeDownload.targetBase,activeDownload.videoPath.base)
       fs.renameSync(partialPath,activeDownload.targetPath);
       activeDownload.status ="Local File Closed";
       observer.next(activeDownload);
