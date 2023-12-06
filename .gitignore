@@ -2,3 +2,4 @@ node_modules/*
 download/*
 base.apk
 camera_firmware/*
+tmp/*
