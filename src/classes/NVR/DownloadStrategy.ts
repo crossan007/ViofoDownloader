@@ -1,4 +1,4 @@
-import { firstValueFrom, lastValueFrom, tap } from "rxjs";
+import { filter, firstValueFrom, lastValueFrom, tap } from "rxjs";
 import { Queue } from "../Queue";
 import { ViofoCam, VIOFOVideoExtended } from "./Viofo";
 import { getLogger } from "../logging";
@@ -139,36 +139,37 @@ export class DownloadStrategy {
       if (!v || typeof v == "undefined") {
         continue;
       }
-
-      const progressBar = new ProgressBar(
-        `:dPath ->  :status [:bar] :percent :currM MB / :sizeM MB`,
-        {
-          width: 40,
-          complete: "=",
-          incomplete: " ",
-          renderThrottle: 250,
-          total: parseInt(v.SIZE),
-        }
-      );
-
-      const download = this.camera.DownloadVideo(v);
-      const firstPromise = firstValueFrom(download);
-
-      const downloadFinishedPromise = lastValueFrom(
-        download.pipe(
-          tap((s) => {
-            progressBar.tick(s.lastChunkSize, {
-              dPath: s.targetPath,
-              status: s.status,
-              currM: (s.bytesReceived / 1024000).toFixed(2),
-              sizeM: (s.size / 1024000).toFixed(2),
-            });
-          })
-        )
-      );
-
       try {
-        this.currentDownloads[v.FPATH] = await firstPromise;
+        const download = this.camera.DownloadVideo(v);
+        this.currentDownloads[v.FPATH] = await firstValueFrom(
+          download.pipe(
+            filter((s) => s.size > 0)
+          )
+        );
+        const progressBar = new ProgressBar(
+          `:dPath ->  :status [:bar] :percent :currM MB / :sizeM MB`,
+          {
+            width: 40,
+            complete: "=",
+            incomplete: " ",
+            renderThrottle: 250,
+            total: this.currentDownloads[v.FPATH].size,
+          }
+        );
+
+        const downloadFinishedPromise = lastValueFrom(
+          download.pipe(
+            tap((s) => {
+              progressBar.tick(s.lastChunkSize, {
+                dPath: s.targetPath,
+                status: s.status,
+                currM: (s.bytesReceived / 1024000).toFixed(2),
+                sizeM: (s.size / 1024000).toFixed(2),
+              });
+            })
+          )
+        );
+        
         await downloadFinishedPromise;
         await this.camera.DeleteVideo(v);
         delete this.currentDownloads[v.FPATH];
