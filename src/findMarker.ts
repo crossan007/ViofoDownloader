@@ -12,7 +12,7 @@ import { filter, last, lastValueFrom } from "rxjs";
 import { BandpassFilter } from "./classes/DSP/bandpassFilter";
 import { DSPBase } from "./classes/DSP/DSPBase";
 import { LowCutFilter } from "./classes/DSP/LowCutFilter";
-
+import * as readline from 'readline';
 
 const log = getLogger("Analyze");
 log.enableAll();
@@ -34,14 +34,14 @@ async function processFile(filePath: string) {
     let beeps: AmplitudeMarker[] = [];
     let lastbts = 0;
     beepAmplitude.loudest.subscribe(l=>{
-      if (lastbts === 0) lastbts = l.timestamp;
+      /*if (lastbts === 0) lastbts = l.timestamp;
       log.debug(`Beep detected at ${l.timestamp} with amplitude ${l.data.avgAmplitude.toFixed(2)} and duration of ${l.data.duration.toFixed(2)} \t\t ${(l.timestamp - lastbts).toFixed(2)} since last`);
-      lastbts = l.timestamp
+      lastbts = l.timestamp*/
       beeps.push(l);
     })
 
    
-   await lastValueFrom(beepAmplitude.loudest);
+   await lastValueFrom(beepAmplitude.loudest).catch(()=>{log.debug("no beeps detected")})
     
     //await Promise.all([nolowFile,beepFile])
 
@@ -61,10 +61,29 @@ async function processFile(filePath: string) {
 
     //const loudestTimestamp = await detectLoudestSoundInAudioStream(audioStream);
 
-    if (beeps.length > 0) {
+    let dest = ""
+    const p = path.parse(inputVideoPath);
+    if (beeps.length > 1) {
       await openFFPlayWithOffset(inputVideoPath, beeps[0].timestamp);
+      const r = await question("Enter title for video, or x to discard: ");
+      if (r != "x") {
+        dest = path.resolve(p.dir,"keep",`${p.base}-${r}.mp4`);
+      }
+      else {
+        dest = path.resolve(p.dir,"discard",`${p.base}.mp4`);
+      }
     }
+    else {
+      dest = path.resolve(p.dir,"no-event",`${p.base}.mp4`);
+    }
+    const destDir = path.dirname(dest);
+      if (!fs.existsSync(destDir)){
+        fs.mkdirSync(destDir);
+      }
+      fs.renameSync(inputVideoPath, dest);
+      log.info(`Moved ${inputVideoPath} to ${dest}`); 
     log.debug(`done processing ${filePath}`);
+    
   } catch (error) {
     console.error("Error:", error);
   }
@@ -91,21 +110,36 @@ function getAllFiles(directoryPath: string) {
   return fileList;
 }
 
+
+let rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+
+const question = (prompt: string) => {
+  return new Promise<string>((resolve) => {
+    rl.question(prompt, resolve);
+  });
+};
+
+
 async function main() {
   const vids = getAllFiles(
-    path.resolve(__dirname, "../download/Locked/2023/12/a")
-  );
+    path.resolve(__dirname, "../download/Locked/2023/12")
+  ).filter(v=>v.toLowerCase().endsWith(".mp4") && !v.includes("keep") && !v.includes("discard") && !v.includes("no-event"));
+
   log.info(`Found ${vids.length} files`)
   for (let v of vids) {
     try{ 
       log.info(`Processing ${v}`);
       await processFile(v);
-      return;
     }
     catch(err){
       log.warn(`Error processing ${v}`, err);
     }
   }
+  rl.close();
 }
 
 main();

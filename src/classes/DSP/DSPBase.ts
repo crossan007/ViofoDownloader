@@ -51,7 +51,7 @@ export abstract class DSPBase {
       resolve = res;
     });
     wavReader.on("format", (format) => {
-      log.debug("Format received", format);
+      //log.debug("Format received", format);
       wavReader.on("data", (chunk) => {
         const samples = new Float32Array(chunk.length / BYTES_PER_SAMPLE);
         for (let i = 0; i < chunk.length; i += BYTES_PER_SAMPLE) {
