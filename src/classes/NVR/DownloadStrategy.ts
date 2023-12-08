@@ -27,7 +27,7 @@ function NewestFrontCameraVideosFirst(
   if (!frontA && frontB) {
     return 1;
   }
-  return dateA - dateB;
+  return dateB - dateA;
 }
 
 class DownloadError extends Error {}
@@ -139,46 +139,60 @@ export class DownloadStrategy {
       if (!v || typeof v == "undefined") {
         continue;
       }
-      try {
-        const download = this.camera.DownloadVideo(v);
-        this.currentDownloads[v.FPATH] = await firstValueFrom(
-          download.pipe(
-            filter((s) => s.size > 0)
-          )
-        );
-        const progressBar = new ProgressBar(
-          `:dPath ->  :status [:bar] :percent :currM MB / :sizeM MB`,
-          {
-            width: 40,
-            complete: "=",
-            incomplete: " ",
-            renderThrottle: 250,
-            total: this.currentDownloads[v.FPATH].size,
-          }
-        );
+      await this.processOneVideo(v)
+    }
+  }
 
-        const downloadFinishedPromise = lastValueFrom(
-          download.pipe(
-            tap((s) => {
-              progressBar.tick(s.lastChunkSize, {
-                dPath: s.targetPath,
-                status: s.status,
-                currM: (s.bytesReceived / 1024000).toFixed(2),
-                sizeM: (s.size / 1024000).toFixed(2),
-              });
-            })
-          )
-        );
-        
-        await downloadFinishedPromise;
-        await this.camera.DeleteVideo(v);
-        delete this.currentDownloads[v.FPATH];
-      } catch (err) {
-        delete this.currentDownloads[v.FPATH];
-        // TODO: If one download fails, check to see if the camera is still alive;  Cancel remaining downloads if it's gone
-        // TODO: Delete the failed download attempt
-        throw new DownloadError(`Failed to download video: ${v.FPATH}`);
+  private async processOneVideo(video: VIOFOVideoExtended) {
+    const videoSize = parseInt(video.SIZE);
+    const progressBar = new ProgressBar(
+      `:dPath ->  :status [:bar] :percent :currM MB / :sizeM MB (:kbps kb/s) (:kbpsa kb/s))`,
+      {
+        width: 40,
+        complete: "=",
+        incomplete: " ",
+        renderThrottle: 250,
+        total: videoSize,
       }
+    );
+
+    try {
+      const download = this.camera.DownloadVideo(video);
+
+      this.currentDownloads[video.FPATH] = await firstValueFrom(download);
+      let downloaded = 0;
+      let started = Date.now();
+      let lastTick  = started;
+      let thisTick = started;
+      await lastValueFrom(
+        download.pipe(
+          tap((s) => {
+            downloaded += s.lastChunkSize;
+            if (downloaded >= videoSize) {
+              log.debug("downloaded more than video size???")
+            }
+            thisTick = Date.now();
+            let kbpsLast = (s.lastChunkSize / 1024) / ((thisTick - lastTick)/1000);
+            let kbpsa = (downloaded / 1024) / ((thisTick - started)/1000);
+            lastTick = thisTick;
+            progressBar.tick(s.lastChunkSize, {
+              dPath: s.targetPath,
+              status: s.status,
+              currM: (s.bytesReceived / 1024000).toFixed(2),
+              sizeM: (s.size / 1024000).toFixed(2),
+              kbps: kbpsLast.toFixed(2),
+              kbpsa: kbpsa.toFixed(2)
+            });
+          })
+        )
+      );
+      await this.camera.DeleteVideo(video);
+      delete this.currentDownloads[video.FPATH];
+    } catch (err) {
+      delete this.currentDownloads[video.FPATH];
+      // TODO: If one download fails, check to see if the camera is still alive;  Cancel remaining downloads if it's gone
+      // TODO: Delete the failed download attempt
+      throw new DownloadError(`Failed to download video: ${video.FPATH}`);
     }
   }
 }
