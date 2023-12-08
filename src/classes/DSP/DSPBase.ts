@@ -19,6 +19,7 @@ export abstract class DSPBase {
   protected sampleRate = 0;
 
   public streamFormat = new ReplaySubject<wav.Format>();
+  
 
   // #endregion Properties (4)
 
@@ -29,6 +30,7 @@ export abstract class DSPBase {
    * @param stream stream of raw samples
    */
   constructor(source: ParsedWavSamples) {
+    this.sampleRate = source.format.sampleRate;
     source.stream.subscribe((chunk) => {
       this.processSample(chunk);
       this.sampleCounter ++;
@@ -57,6 +59,14 @@ export abstract class DSPBase {
           samples[i / BYTES_PER_SAMPLE] = sample;
           samplesSource.next(sample);
         }
+      });
+      wavReader.on("end", () => {
+        log.debug("End of stream");
+        samplesSource.complete();
+      });
+      wavReader.on("error", (err) => {
+        log.error("Error reading wav stream", err);
+        samplesSource.error(err);
       });
       resolve({format, stream: multicast});
     });

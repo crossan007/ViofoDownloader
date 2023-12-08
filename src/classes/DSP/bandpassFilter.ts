@@ -2,12 +2,13 @@ import { DSPBase, ParsedWavSamples } from "./DSPBase";
 import { PassThrough } from "stream";
 import { getLogger } from "loglevel";
 import * as wav from "wav";
-import { Subject } from "rxjs";
+import { ReplaySubject, Subject } from "rxjs";
+import { DSPSourceSink } from "./DSPSourceSink";
 
 const log = getLogger("BandpassFilter");
 log.enableAll();
 
-export class BandpassFilter extends DSPBase {
+export class BandpassFilter extends DSPSourceSink {
   private centerFrequency: number;
   private bandwidth: number;
   private xn1: number;
@@ -21,11 +22,9 @@ export class BandpassFilter extends DSPBase {
   private a1: number;
   private a2: number;
 
-  public filteredStream = new Subject<number>();
-
   constructor(source: ParsedWavSamples, centerFrequency: number, bandwidth: number) {
     super(source);
-    this.sampleRate = this.sampleRate; // Sample rate in Hz
+    this.sampleRate = source.format.sampleRate; // Sample rate in Hz
     this.centerFrequency = centerFrequency; // Center frequency of the bandpass filter in Hz
     this.bandwidth = bandwidth; // Bandwidth of the filter in Hz
 
@@ -64,6 +63,6 @@ export class BandpassFilter extends DSPBase {
     this.yn2 = this.yn1;
     this.yn1 = yn;
 
-    this.filteredStream.next(yn);
+    this.sink.next(yn);
   }
 }

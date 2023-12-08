@@ -25,11 +25,11 @@ async function processFile(filePath: string) {
     const audioStream = extractAudioStreamFromVideo(inputVideoPath);
     const source = await DSPBase.WaveToSamples(audioStream);
     //const amplitude = new Amplitude(source);
-    const beepFilter = new BandpassFilter(source,2000,20);
-    const beepAmplitude = new Amplitude({format: source.format, stream: beepFilter.filteredStream});
+    const beepFilter = new BandpassFilter(source,2000,10);
+    const beepAmplitude = new Amplitude({format: source.format, stream: beepFilter.sink});
 
     beepAmplitude.loudest.subscribe(l=>{
-      log.debug(`Beep detected at ${l.timestamp}`)
+      //log.debug(`Beep detected at ${l.timestamp}`)
     })
 
     const lb = await lastValueFrom(beepAmplitude.loudest);
@@ -51,7 +51,8 @@ async function processFile(filePath: string) {
     //const loudestTimestamp = await detectLoudestSoundInAudioStream(audioStream);
 
 
-    //await openFFPlayWithOffset(inputVideoPath, loudestTimestamp);
+    await openFFPlayWithOffset(inputVideoPath, lb.timestamp);
+    log.debug(`done processing ${filePath}`);
   } catch (error) {
     console.error("Error:", error);
   }
@@ -82,9 +83,15 @@ async function main() {
   const vids = getAllFiles(
     path.resolve(__dirname, "../download/Locked/2023/11")
   );
+  log.info(`Found ${vids.length} files`)
   for (let v of vids) {
-    log.info(`Processing ${v}`);
-    await processFile(v);
+    try{ 
+      log.info(`Processing ${v}`);
+      await processFile(v);
+    }
+    catch(err){
+      log.warn(`Error processing ${v}`, err);
+    }
   }
 }
 

@@ -22,6 +22,8 @@ export class Amplitude extends DSPBase {
     super(source);
     lastValueFrom(source.stream).then(() => {
       this.loudest.complete();
+    }).catch(e=>{
+      this.loudest.error(e);
     });
   }
 
