@@ -6,12 +6,12 @@ import {
   openFFPlayWithOffset,
 } from "./util/ffmpeg-interop";
 import {
-  Amplitude,
-} from "./classes/DSP/amplitude";
-import { lastValueFrom } from "rxjs";
+  NoiseGate, AmplitudeMarker,
+} from "./classes/DSP/Gate";
+import { filter, last, lastValueFrom } from "rxjs";
 import { BandpassFilter } from "./classes/DSP/bandpassFilter";
-import { PassThrough } from "stream";
 import { DSPBase } from "./classes/DSP/DSPBase";
+import { LowCutFilter } from "./classes/DSP/LowCutFilter";
 
 
 const log = getLogger("Analyze");
@@ -24,17 +24,28 @@ async function processFile(filePath: string) {
 
     const audioStream = extractAudioStreamFromVideo(inputVideoPath);
     const source = await DSPBase.WaveToSamples(audioStream);
-    //const amplitude = new Amplitude(source);
-    const beepFilter = new BandpassFilter(source,2000,10);
-    const beepAmplitude = new Amplitude({format: source.format, stream: beepFilter.sink});
+    //const amplitude = new Amplitude(source);.
+    const noLow = new LowCutFilter(source, 1600);
+    //const nolowFile = noLow.writeWav("passthrough.wav")
+    const beepFilter = new BandpassFilter({format: source.format, stream: noLow.sink},2000,10);
+    //const beepFile = beepFilter.writeWav("beepFilter.wav")
+    const beepAmplitude = new NoiseGate({format: source.format, stream: beepFilter.sink}, 1000/32768, 500/32768);
 
+    let beeps: AmplitudeMarker[] = [];
+    let lastbts = 0;
     beepAmplitude.loudest.subscribe(l=>{
-      //log.debug(`Beep detected at ${l.timestamp}`)
+      if (lastbts === 0) lastbts = l.timestamp;
+      log.debug(`Beep detected at ${l.timestamp} with amplitude ${l.data.avgAmplitude.toFixed(2)} and duration of ${l.data.duration.toFixed(2)} \t\t ${(l.timestamp - lastbts).toFixed(2)} since last`);
+      lastbts = l.timestamp
+      beeps.push(l);
     })
 
-    const lb = await lastValueFrom(beepAmplitude.loudest);
+   
+   await lastValueFrom(beepAmplitude.loudest);
+    
+    //await Promise.all([nolowFile,beepFile])
 
-    log.debug(`Loudest beep`, lb );
+    log.debug(`Heard ${beeps.length} beeps`);
   
 
     /**const toneDetector = new ToneDetector(
@@ -50,8 +61,9 @@ async function processFile(filePath: string) {
 
     //const loudestTimestamp = await detectLoudestSoundInAudioStream(audioStream);
 
-
-    await openFFPlayWithOffset(inputVideoPath, lb.timestamp);
+    if (beeps.length > 0) {
+      await openFFPlayWithOffset(inputVideoPath, beeps[0].timestamp);
+    }
     log.debug(`done processing ${filePath}`);
   } catch (error) {
     console.error("Error:", error);
@@ -81,13 +93,14 @@ function getAllFiles(directoryPath: string) {
 
 async function main() {
   const vids = getAllFiles(
-    path.resolve(__dirname, "../download/Locked/2023/11")
+    path.resolve(__dirname, "../download/Locked/2023/12/a")
   );
   log.info(`Found ${vids.length} files`)
   for (let v of vids) {
     try{ 
       log.info(`Processing ${v}`);
       await processFile(v);
+      return;
     }
     catch(err){
       log.warn(`Error processing ${v}`, err);

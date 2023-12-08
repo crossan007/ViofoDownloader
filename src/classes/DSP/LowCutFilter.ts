@@ -1,16 +1,10 @@
-import { DSPBase, ParsedWavSamples } from "./DSPBase";
-import { PassThrough } from "stream";
-import { getLogger } from "loglevel";
-import * as wav from "wav";
-import { ReplaySubject, Subject } from "rxjs";
+import { ParsedWavSamples } from "./DSPBase";
 import { DSPSourceSink } from "./DSPSourceSink";
 
-const log = getLogger("BandpassFilter");
-log.enableAll();
+const Q = 1;
 
-export class BandpassFilter extends DSPSourceSink {
-  private centerFrequency: number;
-  private bandwidth: number;
+export class LowCutFilter extends DSPSourceSink {
+  private cutoffFrequency: number;
   private xn1: number;
   private xn2: number;
   private yn1: number;
@@ -22,20 +16,14 @@ export class BandpassFilter extends DSPSourceSink {
   private a1: number;
   private a2: number;
 
-  constructor(
-    source: ParsedWavSamples,
-    centerFrequency: number,
-    bandwidth: number
-  ) {
+  constructor(source: ParsedWavSamples, cutoffFrequency: number) {
     super(source);
     this.sampleRate = source.format.sampleRate; // Sample rate in Hz
-    this.centerFrequency = centerFrequency; // Center frequency of the bandpass filter in Hz
-    this.bandwidth = bandwidth; // Bandwidth of the filter in Hz
+    this.cutoffFrequency = cutoffFrequency; // Cutoff frequency of the low cut filter in Hz
 
     // Filter coefficients
-    const w0 = (2 * Math.PI * centerFrequency) / this.sampleRate;
-    const Q = centerFrequency / bandwidth;
-    const alpha = Math.sin(w0) / (2 * Q);
+    const w0 = 2 * Math.PI * cutoffFrequency / this.sampleRate;
+    const alpha = Math.sin(w0) / (2 * Q); // Q is the quality factor
 
     // Filter state variables
     this.xn1 = 0; // Input sample at (n-1)
@@ -44,9 +32,9 @@ export class BandpassFilter extends DSPSourceSink {
     this.yn2 = 0; // Output sample at (n-2)
 
     // Filter coefficients
-    this.b0 = alpha;
-    this.b1 = 0;
-    this.b2 = -alpha;
+    this.b0 = (1 + Math.cos(w0)) / 2;
+    this.b1 = -(1 + Math.cos(w0));
+    this.b2 = (1 + Math.cos(w0)) / 2;
     this.a0 = 1 + alpha;
     this.a1 = -2 * Math.cos(w0);
     this.a2 = 1 - alpha;
