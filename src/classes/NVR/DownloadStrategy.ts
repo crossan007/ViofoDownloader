@@ -73,12 +73,12 @@ export class DownloadStrategy {
     const priorityBucket = new PriorityBucket(videosToQueue);
 
     priorityBucket.addBucket(0, {
-      name: "Locked last 24 hours",
+      name: "Locked last 12 hours",
       enable: true,
       filter: (v) =>
         v.Locked &&
         v.RecordingMode != "Parking" &&
-        v.StartDate < new Date(Date.now() - 1000 * 60 * 60 * 24 * 2),
+        v.StartDate < new Date(Date.now() - 1000 * 60 * 60 * 12),
       sort: NewestFrontCameraVideosFirst,
     });
     priorityBucket.addBucket(1, {
@@ -88,15 +88,23 @@ export class DownloadStrategy {
       sort: NewestFrontCameraVideosFirst,
     });
 
+    priorityBucket.addBucket(3, {
+      name: "Driving last 6 hours",
+      enable: true,
+      filter: (v) => v.RecordingMode == "Normal" &&
+      v.StartDate < new Date(Date.now() - 1000 * 60 * 60 * 6),
+      sort: NewestFrontCameraVideosFirst,
+    });
+
     priorityBucket.addBucket(2, {
-      name: "Locked",
+      name: "Locked Parking",
       enable: true,
       filter: (v) => v.Locked,
       sort: NewestFrontCameraVideosFirst,
     });
 
     priorityBucket.addBucket(3, {
-      name: "Normal",
+      name: "Driving",
       enable: true,
       filter: (v) => v.RecordingMode == "Normal",
       sort: NewestFrontCameraVideosFirst,
