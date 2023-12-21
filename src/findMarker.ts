@@ -64,7 +64,7 @@ async function processFile(filePath: string) {
     let dest = ""
     const p = path.parse(inputVideoPath);
     if (beeps.length > 1) {
-      await openFFPlayWithOffset(inputVideoPath, beeps[0].timestamp);
+      const playPromise = openFFPlayWithOffset(inputVideoPath, beeps[0].timestamp-5,9);
       const r = await question("Enter title for video, or x to discard: ");
       if (r != "x") {
         dest = path.resolve(p.dir,"keep",`${p.base}-${r}.mp4`);
@@ -72,6 +72,7 @@ async function processFile(filePath: string) {
       else {
         dest = path.resolve(p.dir,"discard",`${p.base}.mp4`);
       }
+      await playPromise;
     }
     else {
       dest = path.resolve(p.dir,"no-event",`${p.base}.mp4`);
@@ -83,7 +84,6 @@ async function processFile(filePath: string) {
       fs.renameSync(inputVideoPath, dest);
       log.info(`Moved ${inputVideoPath} to ${dest}`); 
     log.debug(`done processing ${filePath}`);
-    
   } catch (error) {
     console.error("Error:", error);
   }
