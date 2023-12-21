@@ -1,5 +1,3 @@
-import { Queue } from "../Queue";
-
 type BucketFilterFunction<T> = (item: T) => boolean;
 type BucketSortFunction<T> = (a: T, b: T) => number;
 
@@ -13,16 +11,43 @@ type Bucket<T> = {
 export class PriorityBucket<T> {
 
   private buckets: Bucket<T>[] = [];
+  private all: T[] = []
 
-  constructor(private all: T[] = []) {
-  }
+  constructor() {}
 
   public addBucket(order: number, bucket: Bucket<T>) {
     this.buckets[order] = bucket
   }
 
+  public dequeue(): T | undefined {
+    const currentBucket = this.buckets
+      .find((bucket) => bucket.enable && this.all.filter(bucket.filter).length > 0)
+    if (! currentBucket) {
+      return undefined;
+    }
+    const firstItem = this.all.filter(currentBucket.filter)[0]
+    this.all.splice(this.all.indexOf(firstItem), 1);
+
+    return firstItem;
+  }
+
+  public clear(): void {
+    this.all = [];
+  }
+
+  public push(item: T | T[]): void {
+    if (Array.isArray(item)) {
+      // If the argument is an array, add its elements to the queue
+      this.all.push(...item);
+    } else {
+      // If the argument is a single item, add it to the queue
+      this.all.push(item);
+    }
+  }
+
+
   
-  public GetQueue(): {fullQueue: Queue<T>, bucketCounts: {[key: string]: number}} {
+  public GetBucketCounts(): {[key: string]: number} {
 
     /** 
      *  Iterate all of the buckets in ascending order by the "order" attribute.
@@ -34,7 +59,6 @@ export class PriorityBucket<T> {
      * 
      */
 
-    let fullQueue = new Queue<T>();
     let bucketCounts: {[key: string]: number} = {};
     let remaining = [...this.all];
 
@@ -43,22 +67,14 @@ export class PriorityBucket<T> {
         if (bucket.sort) {
           items.sort(bucket.sort);
         }
-        if (bucket.enable) {
-          fullQueue.enqueue(items);
-        }
         remaining = remaining.filter((item) => !items.includes(item));
         bucketCounts[bucket.name] = items.length;
       })
     if(remaining.length > 0) {
-      fullQueue.enqueue(remaining);
       bucketCounts["Unsorted"] = remaining.length;
     }
-
-    return {
-      fullQueue,
-      bucketCounts
-    }
-
+    return bucketCounts
+  
   }
 
 }

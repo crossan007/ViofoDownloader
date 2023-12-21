@@ -42,7 +42,7 @@ app.get('/', (req: Request, res: Response) => {
   res.json({
     downloads: {
       activeDownloads: downloader.getCurrentDownloads(),
-      queue_top_20: downloader.getCurrentQueue().get().slice(0,20)
+      queue_top_20: downloader.getBucketCounts()
     },
     camera: {
       secondsSinceLastHeartbeat: Math.trunc((Date.now() - viofoCam.lastActivity)/1000),
